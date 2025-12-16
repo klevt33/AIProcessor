@@ -6,6 +6,7 @@ and tracking information. The module also includes utility functions for handlin
 batch processing, and cleaning.
 """
 
+import inspect
 import json
 from copy import deepcopy
 from typing import Iterator, List, Literal
@@ -886,13 +887,18 @@ async def update_invoice_detail_and_tracking_values_by_id(
             invoice_detail_id, normalized_results, is_duplicate, parent_detail_id
         )
 
+        async def _maybe_await(value):
+            if inspect.isawaitable(value):
+                return await value
+            return value
+
         # Define a helper function to perform the database writes.
         async def perform_writes(connection):
-            await sdp.update_data(ivce_dtl_query, ivce_dtl_values, conn=connection, retry=False)
+            await _maybe_await(sdp.update_data(ivce_dtl_query, ivce_dtl_values, conn=connection, retry=False))
 
-            update_result = await sdp.update_data(update_q, update_p, conn=connection, retry=False)
-            if update_result.rowcount == 0:
-                await sdp.update_data(insert_q, insert_p, conn=connection, retry=False)
+            update_result = await _maybe_await(sdp.update_data(update_q, update_p, conn=connection, retry=False))
+            if getattr(update_result, "rowcount", 0) == 0:
+                await _maybe_await(sdp.update_data(insert_q, insert_p, conn=connection, retry=False))
 
         # 2. Decide whether to use the provided transaction or create a new one.
         if conn:

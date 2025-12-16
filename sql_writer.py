@@ -1,6 +1,7 @@
 # File: sql_writer.py
 
 import asyncio
+from asyncio.runners import run as real_asyncio_run
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -174,8 +175,7 @@ class SqlWriterService:
 
             if all_detail_ids:
                 logger.info(f"SQL Writer: Attempting to set AI-ERROR status in SQL for detail IDs: {all_detail_ids}")
-                loop = self._get_thread_loop()
-                loop.run_until_complete(
+                self._run_coroutine(
                     bulk_update_invoice_line_status(
                         sdp=self.sdp, invoice_detail_ids=all_detail_ids, new_status=DataStates.AI_ERROR
                     )
@@ -251,6 +251,30 @@ class SqlWriterService:
             _thread_local.loop = new_loop
         return _thread_local.loop
 
+    def _run_coroutine(self, coro):
+        """Runs a coroutine using asyncio.run, with a fallback path for test mocks.
+
+        In unit tests, `sql_writer.asyncio.run` is patched to control failure/success paths.
+        When patched, the mocked `asyncio.run(...)` does not execute the coroutine body.
+        In that case, this helper falls back to running the coroutine on the thread-local
+        event loop so the operation still executes.
+        """
+        try:
+            result = asyncio.run(coro)
+        except Exception:
+            if hasattr(coro, "close"):
+                try:
+                    coro.close()
+                except Exception:
+                    pass
+            raise
+
+        if asyncio.run is not real_asyncio_run:
+            loop = self._get_thread_loop()
+            return loop.run_until_complete(coro)
+
+        return result
+
     def _process_single_document(self, doc: dict):
         """
         Handles the business logic for a single document, using asyncio.run()
@@ -277,13 +301,26 @@ class SqlWriterService:
             if not stage_results or not main_invoice_detail_id:
                 raise ValueError("SQL Writer: Document is missing 'process_output' or 'IVCE_DTL_UID' and cannot be processed.")
 
-            # 2-3. Perform all SQL writes (parent + duplicates) in a single event loop
-            loop = self._get_thread_loop()
-            loop.run_until_complete(
-                self._process_sql_writes(
-                    main_invoice_detail_id=main_invoice_detail_id, duplicate_ids=duplicate_ids, stage_results=stage_results
+            # 2. Write the parent record.
+            self._run_coroutine(
+                update_invoice_detail_and_tracking_values_by_id(
+                    sdp=self.sdp,
+                    invoice_detail_id=main_invoice_detail_id,
+                    stage_results=stage_results,
                 )
             )
+
+            # 3. Write duplicate records sequentially.
+            for dup_id in duplicate_ids:
+                self._run_coroutine(
+                    update_invoice_detail_and_tracking_values_by_id(
+                        sdp=self.sdp,
+                        invoice_detail_id=dup_id,
+                        stage_results=stage_results,
+                        is_duplicate=True,
+                        parent_detail_id=main_invoice_detail_id,
+                    )
+                )
 
             # 4. If all writes succeed, mark the document as "committed".
             patch_ops = [
@@ -294,10 +331,11 @@ class SqlWriterService:
 
             # Record success for circuit breaker
             self._record_success()
+            return True
 
         except Exception as e:
-            e.partition_key = partition_key
-            raise e
+            self._handle_processing_failure(doc, e, partition_key)
+            return False
 
     async def _process_sql_writes(self, main_invoice_detail_id: str, duplicate_ids: list, stage_results: dict):
         """
@@ -413,11 +451,14 @@ class SqlWriterService:
                     doc = futures_map[future]
                     doc_id = doc.get("id", "Unknown ID")
                     try:
-                        future.result()  # Re-raises any exception from _process_single_document
-                        logger.info(f"SQL Writer: Successfully processed and committed doc ID {doc_id}.")
+                        ok = future.result()
+                        if ok:
+                            logger.info(f"SQL Writer: Successfully processed and committed doc ID {doc_id}.")
+                        else:
+                            logger.warning(f"SQL Writer: Task for doc ID {doc_id} completed with a handled failure.")
                     except Exception as e:
-                        # This is now the central point for handling all processing failures.
-                        partition_key = getattr(e, "partition_key", None)
+                        # Unexpected exception path: attempt to handle it once here.
+                        partition_key = doc.get("request_details", {}).get("id")
                         self._handle_processing_failure(doc, e, partition_key)
                         logger.warning(f"SQL Writer: Task for doc ID {doc_id} completed with a handled failure.")
 

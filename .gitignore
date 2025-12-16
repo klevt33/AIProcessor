@@ -1,4 +1,4 @@
-﻿# Environment & secrets
+# Environment & secrets
 .env
 .env.*
 local.settings.json
@@ -12,6 +12,7 @@ secrets.*
 bin/
 obj/
 __pycache__/
+.venv/
 
 # Logs
 *.log
