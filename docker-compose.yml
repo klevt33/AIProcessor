@@ -1,0 +1,6 @@
+services:
+  spendreportaiapi:
+    image: spendreportaiapi
+    build:
+      context: .
+      dockerfile: ./Dockerfile

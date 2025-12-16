@@ -1,0 +1,14 @@
+# Total RC-AI material records to be considered for manual update.
+NUM_MATERIAL_RECORDS: 85
+
+# Total RC-AI non-material records to be considered for manual update.
+NUM_NON_MATERIAL_RECORDS: 15
+
+# The IVCE_LNE_STAT status to be used to
+RC_STATUS_FOR_QUERY: 'RC-AI'
+
+# The IVCE_LNE_STAT status to be updated for the considered material and non-material records.
+RC_STATUS_TO_UPDATE: 'DS1-AI'
+
+# The unique identifier in the IVCE_DTL table to update the Status.
+IVCE_DETAIL_UNIQUE_ID: 'IVCE_DTL_UID'

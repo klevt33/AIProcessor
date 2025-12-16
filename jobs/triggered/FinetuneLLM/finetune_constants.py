@@ -1,0 +1,12 @@
+RELOAD_APP_CONFIG_ENDPOINT = "/v1/reload_app_config"
+
+# LLM stage results constants
+STAGE_RES_MFR_NAME = "manufacturer_name"
+STAGE_RES_PN = "part_number"
+STAGE_RES_UNSPSC = "unspsc"
+STAGE_RES_CONF_SCORE = "confidence_score"
+
+TRUE_POSITIVE = "TRUE_POSITIVE"
+TRUE_NEGATIVE = "TRUE_NEGATIVE"
+FALSE_POSITIVE = "FALSE_POSITIVE"
+FALSE_NEGATIVE = "FALSE_NEGATIVE"

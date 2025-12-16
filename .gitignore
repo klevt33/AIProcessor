@@ -1,0 +1,17 @@
+﻿# Environment & secrets
+.env
+.env.*
+local.settings.json
+secrets.*
+*key*
+*secret*
+*connection*
+
+# OS / tooling
+.vscode/
+bin/
+obj/
+__pycache__/
+
+# Logs
+*.log

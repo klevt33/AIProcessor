@@ -1,0 +1,205 @@
+RPA_PROCESS:
+  # Boost confidence of results using RPA values
+  CONFIDENCE_BOOST: 10
+
+SEMANTIC_SEARCH:
+  SEMANTIC_SEARCH:
+    # Search configuration
+    SEARCH:
+      # Minimum similarity score for returned results (0-1)
+      similarity_threshold: 0.75
+      # Number of results to retrieve (positive integer)
+      top_results: 5
+      # Maximum number of results to consider for further processing (positive integer)
+      max_results: 25
+
+    WEIGHTS:
+      # Point where similarity becomes meaningful
+      mid_point: 0.55
+      # Factor to control exponential curve
+      exp_factor: 10
+
+    CONFIDENCE:
+      # Factor applied to confidence score for single matches (0-1)
+      single_match_factor: 0.95
+      # Minimum confidence threshold for returning a result (0-100)
+      min_confidence_threshold: 50
+      # Minimum similarity threshold for single matches (0-100)
+      single_match_similarity_threshold: 80
+
+    UNSPSC:
+      # Thresholds for each UNSPSC level when comparing different levels
+      level_thresholds: [90, 80, 70, 60]
+
+      # Percentage difference needed for a more generic variant to be preferred over more specific
+      generic_delta_percentage: 10
+
+    RAG_CONTEXT:
+      # Minimum similarity score required to include an item as a Few-Shot Example (0.0-1.0)
+      min_example_similarity: 0.85
+
+COMPLETE_MATCH:
+  COMPLETE_MATCH:
+    VERIFIED_SOURCES:
+      - 'IDEA'
+      - 'TRD_SVC'
+    # Minimum confidence threshold for returning results
+    min_confidence_threshold: 50
+    # Factor relative to the top record's PartNumberConfidenceScore.
+    # Records with PartNumberConfidenceScore below (top_score * this_factor) are removed.
+    # E.g., 0.5 means records must have more than 50% of the top score. Range: 0.0 to 1.0.
+    top_score_relative_filter_factor: 0.7
+    # Part Number confidence scoring parameters
+    PART_NUMBER_CONFIDENCE:
+      # Base score for part number confidence (0-100)
+      base_weight: 0.0
+      # Core part number points weight (0-1)
+      weight: 0.8
+      # Manufacturer influence on part score (0-1)
+      manufacturer_weight: 0.5
+      # Description similarity impact on part score (0-1)
+      desc_sim_weight: 0.4
+
+      # Points based on effective part number length
+      length_points:
+        lt_4: 10   # Less than 4 characters
+        eq_4: 30   # 4 characters
+        eq_5: 45   # 5 characters
+        eq_6: 60   # 6 characters
+        eq_7: 70   # 7 characters
+        eq_8: 80   # 8 characters
+        eq_9: 90   # 9 characters
+        eq_10: 95  # 10 characters
+        gt_10: 100 # Greater than 10 characters
+
+      # --- Contextual Part Number Scoring based on Description Ambiguity ---
+      # A "Unique Independent Part Number Candidate" (UIPNC) is a distinct alphanumeric sequence
+      # in the input description that could be a part number. These settings adjust the score
+      # based on how many such candidates are found.
+
+      # Bonus points added to the part number score if the part number is a confirmed UIPNC (not a substring).
+      uipnc_match_bonus: 15
+      # The base unit for calculating ambiguity penalties. The penalty is a factor of this unit.
+      uipnc_penalty_unit: 5
+
+    # Manufacturer Name confidence scoring parameters
+    MANUFACTURER_CONFIDENCE:
+      # The maximum score if the manufacturer was not explicitly in the description.
+      implicit_match_score_cap: 90
+      # Base score for manufacturer confidence (0-100)
+      base_weight: 0.0
+      # Part number's influence on manufacturer score (0-1)
+      part_weight: 0.5
+      # Base manufacturer matching importance (0-1)
+      weight: 0.8
+      # Description impact on manufacturer (0-1)
+      desc_sim_weight: 0.4
+
+      # Points for manufacturer name matching
+      match_points:
+        # --- Settings when a primary manufacturer (unclean_name) is identified for the row ---
+        primary_match_found:
+          no_conflicts_base: 90       # Base points when unclean_name exists AND no other relevant manufacturers were found in input desc (other_count after filtering is 0).
+          primary_short_penalty: -10  # Penalty applied to base if the unclean_name itself is short (<4 chars).
+          primary_long_bonus: 10      # Bonus applied to base if the unclean_name itself is long (>6 chars).
+
+        # --- Adjustments when conflicting manufacturers are found in input desc ---
+        primary_match_conflicts:
+          one_short_conflict_score: 70      # One conflict, unclean name < 4 chars
+          multiple_short_conflicts_score: 60 # Multiple conflicts, all unclean names < 4 chars
+          one_long_conflict_score: 40       # One conflict, unclean name >= 4 chars
+          one_long_one_or_more_short_conflicts_score: 30 # One conflict (>=4 chars) AND one or more short conflicts (<4 chars)
+          multiple_long_conflicts_score: 0  # More than one conflict (>=4 chars), regardless of short conflicts
+
+        # --- Settings when NO primary manufacturer (unclean_name) is identified for the row ---
+        no_primary_match:
+          no_others_score: 30          # Points when unclean_name is missing AND no other relevant manufacturers were found (other_count is 0).
+          only_short_others_score: 10 # Points when unclean_name is missing AND all other relevant manufacturers found were short.
+          one_long_other_score: -10    # Points when unclean_name is missing AND exactly one long relevant manufacturer was found (plus potentially shorts).
+          multiple_long_others_score: -30 # Points when unclean_name is missing AND multiple long relevant manufacturers were found (plus potentially shorts).
+
+        # Bonus if manufacturer found at the beginning of description
+        beginning_of_description_bonus: 30
+
+    # UNSPSC confidence scoring parameters
+    UNSPSC_CONFIDENCE:
+      # Base score for existing UNSPSC codes (0-100)
+      base_weight: 0.0
+      # Part number contribution (0-1)
+      part_weight: 0.4
+      # Manufacturer contribution (0-1)
+      manufacturer_weight: 0.4
+      # Description similarity contribution (0-1)
+      desc_sim_weight: 0.9
+
+    # Description similarity normalization parameters
+    DESCRIPTION_SIMILARITY:
+      # Midpoint for similarity score normalization (0-1)
+      mid_point: 0.55
+      # Thresholds for filtering by description similarity
+      high_threshold: 0.95
+      low_threshold: 0.8
+
+    # Single manufacturer scoring (when only manufacturer dict is available)
+    SINGLE_MANUFACTURER_CONFIDENCE:
+      short_name: 60      # Score for names < 4 chars
+      name_4_chars: 75    # Score for 4 char names
+      name_5_chars: 85    # Score for 5 char names
+      name_6_chars: 90    # Score for 6 char names
+      name_7_chars: 95    # Score for 7 char names
+      name_8plus_chars: 100  # Score for names ≥ 8 chars
+
+      # Bonus if manufacturer found at the beginning of description
+      beginning_of_description_bonus: 30
+
+      # Parameters for penalty adjustments in multiple match scenarios
+      penalty_for_single_conflict: 20   # Penalty if one other conflicting mfr exists
+      penalty_for_multiple_conflicts: 30 # Penalty if multiple other conflicting mfrs exist
+
+EXTRACTION_WITH_LLM_AND_WEBSEARCH:
+  AZURE_AI_AGENT_WITH_BING_SEARCH:
+    MFR_MATCH:
+      exact: 40
+      likely: 30
+      possible: 20
+      not_detected: 0
+      mismatch: -10
+      existing_mfr: 10
+
+    PART_NUM_MATCH:
+      exact: 25
+      strong: 20
+      partial: 15
+      possible: 5
+      no_match: 0
+
+    PART_NUM_LENGTH:
+      alphanumeric: 10
+      lt_4: 0
+      eq_4_5: 5
+      eq_6_7: 10
+      gt_7: 15
+
+    DESCRIPTION_SIMILARITY:
+      exact: 25
+      very_high: 20
+      high: 15
+      medium: 5
+      low: 0
+
+    DATA_SOURCES: # p - priority, np - non-priority
+      single_p: 10
+      multiple_p: 25
+      single_p_and_np: 25
+      np_each: 5
+
+    WEIGHTAGE: # to calculate confidence of each result
+      CASE:
+        mfr: 0.45
+        prt_num: 0.45
+        unspsc: 0.1
+
+      CASE_1:
+        mfr: 0
+        prt_num: 0
+        unspsc: 1

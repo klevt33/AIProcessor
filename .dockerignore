@@ -1,0 +1,49 @@
+# Ignore virtualenvs and Python caches
+.venv/
+**/__pycache__/
+*.pyc
+
+# Ignore IDE settings
+.vscode/
+.idea/
+*.user
+
+# Ignore Git and system files
+.git/
+.gitignore
+.env
+.DS_Store
+
+# Ignore binaries and build outputs
+bin/
+obj/
+*.dbmdl
+*.jfm
+
+# Ignore Docker-related files that aren't part of main build
+**/docker-compose.override.yml
+**/Dockerfile.dev
+**/compose*
+
+# Ignore Helm or Kubernetes charts if not needed
+charts/
+secrets.dev.yaml
+values.dev.yaml
+
+# Ignore JS dependencies
+node_modules/
+npm-debug.log
+
+# Project or build system files
+.classpath
+.project
+.settings
+.toolstarget
+
+# Docs and license
+LICENSE
+README.md
+
+jobs/triggered/*.zip
+precommit_output.txt
+.mypy_cache/

@@ -1,0 +1,19 @@
+# App configs Prod_Major.Prod_Minor.Dev_Deploy
+APP_VERSION: 1.2.69-dev.39595
+# Project configs
+ALLOWED_CLIENTS:
+  dev: 5bd51945-a18f-4881-8f65-04ceb231fc59
+  test:
+  prod: 8f9a3f69-f064-4756-bb84-8243ddc90b8b
+EXACT_MATCH_SOURCE: azure_search # database or azure_search
+PREDEFINED_SITES: data/predefined_sites.txt
+# # Job time-out (seconds) 5m = 300s
+# JOB_TIMEOUT_SECONDS: 600 # was 10
+
+# SQL Writer Settings
+SQL_WRITER_SETTINGS:
+  batch_size: 25
+  poll_interval_seconds: 5
+  max_workers: 1
+# local or web
+ENVIRONMENT: local

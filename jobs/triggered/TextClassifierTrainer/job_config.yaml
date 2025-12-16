@@ -1,0 +1,20 @@
+# Classifiers to train
+CLASSIFIERS:
+  # - rental
+  - description
+  # - lot
+
+# Will re-generate and upload all training data to the storage buckets
+# for all active classifiers instead of just new training data
+RELOAD_ALL_TRAINING_DATA: true
+
+# Defaults if not defined in classifier_config.yaml
+
+# Deployment name for each classifier
+DEV_DEPLOYMENT_NAME: dev
+PROD_DEPLOYMENT_NAME: prod
+# Threshold of f1_score required to deploy
+THRESHOLD: 0.95
+# Threshold of new data to start new training job
+NEW_DATA_THRESHOLD: 100
+MAX_CLASSIFIERS_RUNNING: 1

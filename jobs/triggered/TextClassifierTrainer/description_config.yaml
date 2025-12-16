@@ -1,0 +1,14 @@
+# Classes that the classifier may classify into
+CLASSES:
+  - MATERIAL
+  - TAX
+  - BAD
+  - FEE
+  - FREIGHT
+  - LABOR
+# Name of the storage container to save the training data
+CONTAINER_NAME: spendreport-automated-description-classifier
+# Project name for language studio
+PROJECT_NAME: description-classifier
+MODEL_NAME: description-classifier
+THRESHOLD: 1

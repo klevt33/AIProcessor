@@ -1,0 +1,13 @@
+# Classes that the classifier may classify into
+CLASSES:
+  y: RENTAL
+  n: NON_RENTAL
+# Name of the storage container to save the training data
+CONTAINER_NAME: spendreport-automated-rental-classifier
+# Project name for language studio
+PROJECT_NAME: rental-classifier
+# Project name for language studio
+MODEL_NAME: rental-classifier
+# the value in the training data to use for the CLASSES key for dict conversion
+CLASS_COL_NAME: rental_indicator
+THRESHOLD: 0.99

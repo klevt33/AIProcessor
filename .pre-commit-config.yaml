@@ -1,0 +1,115 @@
+# .pre-commit-config.yaml
+# Run `pre-commit install` once locally.
+# Keep versions fresh with: `pre-commit autoupdate`
+# # Run `pre-commit run --all-files` to run checks and fix where ever possible
+# # Run `pre-commit run --all-files > precommit_output.txt 2>&1` to write output to a file
+
+# Run order: autoflake ➜ isort ➜ black ➜ flake8 ➜ mypy (so fixes happen before checks)
+# flake8 + black: ignore E203,W503 so they don’t fight black
+
+# repos: []
+
+repos:
+
+  # 0) Hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+
+  # 1) Auto-fix unused imports/vars first
+  - repo: https://github.com/PyCQA/autoflake
+    rev: v2.3.1
+    hooks:
+      - id: autoflake
+        args:
+          - --remove-all-unused-imports
+          - --remove-unused-variables
+          - --in-place
+          - --recursive
+
+  # 2) b) Sort imports
+  - repo: https://github.com/pycqa/isort
+    rev: 6.0.1
+    hooks:
+      - id: isort
+        args:
+          - --profile=black
+          - --filter-files
+          - --line-length=130
+          - --force-grid-wrap=0
+          - --combine-as
+
+   # 3) Format
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+        args:
+          - --line-length=130
+          - --skip-magic-trailing-comma
+          - --preview
+          - --enable-unstable-feature=string_processing
+
+  # 4) Lint (make it agree with Black)
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.3.0
+    hooks:
+      - id: flake8
+        additional_dependencies:
+          - flake8-bugbear
+          - flake8-comprehensions
+          - flake8-builtins
+        args:
+          - --ignore=F722
+          - --max-line-length=130
+          - --extend-ignore=E203,W503
+          - --per-file-ignores=cosmos/*:E501,E402,tests/*:E501,E402,e2e_test/*:E501,E402,training/*:E501,E402,prompts.py:E501,app.py:E402,api_schemas.py:A003,
+
+  # 5) Spelling (auto-fix)
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        args:
+          - --write-changes
+          - --ignore-words-list=teh
+          - --skip=*.json,*.csv,*.png,*.jpg,*.woff,*.woff2
+        exclude: ^(node_modules/|dist/|build/|.venv/|venv/)
+
+  # # 6) Automated Type checking correction
+  # - repo: https://github.com/hauntsaninja/no_implicit_optional
+  #   rev: main
+  #   hooks:
+  #     - id: no-implicit-optional
+  #       args: [--py310-plus]
+
+  # # 7) Type checking
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.17.1
+  #   hooks:
+  #     - id: mypy
+  #       exclude: ^(tests/|e2e_test/|training/)
+  #       args:
+  #         - --ignore-missing-imports
+  #         - --namespace-packages
+  #         - --explicit-package-bases
+  #         - --pretty
+  #       additional_dependencies:
+  #         - types-requests
+  #         - types-PyYAML
+
+#   # Security scan
+#   - repo: https://github.com/PyCQA/bandit
+#     rev: 1.7.6
+#     hooks:
+#       - id: bandit
+#         args: ["-q", "-r", "."] # Quiet mode, Recursive scan, Current directory(starting point)
+#         exclude: ^(tests/|e2e_test/|docs/|data/|env/|sql/)  # skip tests folders

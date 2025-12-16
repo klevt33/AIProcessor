@@ -1,0 +1,14 @@
+# Classes that the classifier may classify into
+CLASSES:
+  LOT: LOT
+  # Map MATERIAL from DB to NOT_LOT prediction for AI
+  MATERIAL: NOT_LOT
+# Name of the storage container to save the training data
+CONTAINER_NAME: spendreport-automated-lot-classifier
+# Project name for language studio
+PROJECT_NAME: lot-classifier
+# Project name for language studio
+MODEL_NAME: lot-classifier
+DEV_DEPLOYMENT_NAME: dev
+PROD_DEPLOYMENT_NAME: prod
+THRESHOLD: 1
