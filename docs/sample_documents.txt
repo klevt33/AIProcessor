@@ -1,0 +1,1316 @@
+[
+    {
+        "id": "2025-12-14 16:03:40.111809-06:00-0001-1421549",
+        "app_version": "1.2.69-dev.39595",
+        "request_details": {
+            "id": "2025-12-14 16:03:40.111809-06:00-0001",
+            "total_invoice_detail_ids": 50,
+            "api_request_uuid": "e2d51d76-98f1-4558-97a6-5af091508732",
+            "classify": true,
+            "sys_name": "kirill",
+            "start_time": "2025-12-14 16:08:26.908223-06:00"
+        },
+        "sql_writer": {
+            "status": "committed",
+            "retry_count": 0,
+            "committed_at": "2025-12-14 16:08:56.785708-06:00"
+        },
+        "invoice_details_from_rpa": {
+            "IVCE_DTL_UID": 1421549,
+            "IVCE_HDR_ID": "282044",
+            "IVCE_NUM": "9541",
+            "ITM_LDSC": "SAFETY SERVICE - ALL\nVincent Colmore - Straight Time",
+            "MFR_PRT_NUM": null,
+            "MFR_NM": null,
+            "AKS_PRT_NUM": null,
+            "UPC_CD": null,
+            "CLN_MFR_PRT_NUM": null,
+            "CLN_MFR_NM": null,
+            "CLN_MFR_AI_NM": "FEE",
+            "CTGY_ID": "4",
+            "IS_RENTAL": "N",
+            "IVCE_VRFN_IND": "N"
+        },
+        "pre-processing": {
+            "ITM_AI_LDSC": "SAFETY SERVICE - ALL\nVincent Colmore - Straight Time"
+        },
+        "process_details": {
+            "1": {
+                "stage_number": 1,
+                "sub_stage_code": "1.0",
+                "stage_name": "CLASSIFICATION",
+                "sub_stage_name": "DESCRIPTION_CLASSIFIER",
+                "status": "success",
+                "details": {
+                    "is_verified_flag": false,
+                    "is_mfr_clean_flag": true,
+                    "end_time": "2025-12-14 16:08:36.994866-06:00",
+                    "category": "FEE",
+                    "category_id": "4",
+                    "confidence_score": 100,
+                    "description": "safety service - all vincent colmore - straight time"
+                },
+                "ignore_stage": false
+            },
+            "3": {
+                "stage_number": 3,
+                "sub_stage_code": "1.2",
+                "stage_name": "CLASSIFICATION",
+                "sub_stage_name": "RENTAL_CLASSIFIER",
+                "status": "success",
+                "details": {
+                    "is_verified_flag": false,
+                    "is_mfr_clean_flag": true,
+                    "end_time": "2025-12-14 16:08:42.329051-06:00",
+                    "category": "NON_RENTAL",
+                    "category_id": "N",
+                    "confidence_score": 100,
+                    "description": "safety service - all vincent colmore - straight time"
+                },
+                "ignore_stage": true
+            }
+        },
+        "post-processing": {
+            "duplicate_detail_uids": [
+                912083,
+                912084,
+                1421277,
+                1421278,
+                1421550
+            ]
+        },
+        "process_output": {
+            "category": "FEE",
+            "category_conf": 100,
+            "category_id": "4",
+            "category_stage": "CLASSIFICATION - DESCRIPTION_CLASSIFIER",
+            "description": "safety service - all vincent colmore - straight time",
+            "description_stage": "CLASSIFICATION - DESCRIPTION_CLASSIFIER",
+            "end_time": "2025-12-14 16:08:42.329446-06:00",
+            "invoice_line_status": "RC-AI",
+            "is_mfr_clean_flag": true,
+            "is_rental": "N",
+            "is_verified_flag": "N",
+            "manufacturer_name_conf": 100
+        },
+        "response_details": {
+            "status": "success",
+            "message": "Processed invoice detail.",
+            "repliedAt": "2025-12-14 16:08:42.331376-06:00",
+            "replyToId": "2025-12-14 16:03:40.111809-06:00-0001"
+        },
+        "_rid": "3qIhAP-I1vMAzAEAAAAAAA==",
+        "_self": "dbs/3qIhAA==/colls/3qIhAP-I1vM=/docs/3qIhAP-I1vMAzAEAAAAAAA==/",
+        "_etag": "\"581680a7-0000-0200-0000-693f35780000\"",
+        "_attachments": "attachments/",
+        "_ts": 1765750136
+    },
+	
+    {
+        "id": "2025-12-15 14:55:34.911223-06:00-0001-1421163",
+        "app_version": "1.2.70-dev.39645",
+        "request_details": {
+            "id": "2025-12-15 14:55:34.911223-06:00-0001",
+            "total_invoice_detail_ids": 50,
+            "api_request_uuid": "d84e1955-99b1-4d11-b41f-7e92075fb484",
+            "classify": true,
+            "sys_name": "web",
+            "start_time": "2025-12-15 14:55:50.518420-06:00"
+        },
+        "sql_writer": {
+            "status": "committed",
+            "retry_count": 0,
+            "committed_at": "2025-12-15 14:56:51.452157-06:00"
+        },
+        "invoice_details_from_rpa": {
+            "IVCE_DTL_UID": 1421163,
+            "IVCE_HDR_ID": "282040",
+            "IVCE_NUM": "S6404663.001",
+            "ITM_LDSC": "T&B 425 1-1/4 INSULATING SLEEVE",
+            "MFR_PRT_NUM": "425",
+            "MFR_NM": "THOMAS AND BETTS ",
+            "AKS_PRT_NUM": null,
+            "UPC_CD": null,
+            "CLN_MFR_PRT_NUM": "T B 425",
+            "CLN_MFR_NM": null,
+            "CLN_MFR_AI_NM": "THOMAS & BETTS",
+            "CTGY_ID": null,
+            "IS_RENTAL": "N",
+            "IVCE_VRFN_IND": "N"
+        },
+        "pre-processing": {
+            "ITM_AI_LDSC": "THOMAS AND BETTS  T&B 425 1-1/4 INSULATING SLEEVE"
+        },
+        "process_details": {
+            "1": {
+                "stage_number": 1,
+                "sub_stage_code": "1.0",
+                "stage_name": "CLASSIFICATION",
+                "sub_stage_name": "DESCRIPTION_CLASSIFIER",
+                "status": "success",
+                "details": {
+                    "is_verified_flag": false,
+                    "is_mfr_clean_flag": true,
+                    "end_time": "2025-12-15 14:56:02.354414-06:00",
+                    "category": "MATERIAL",
+                    "category_id": "1",
+                    "confidence_score": 100,
+                    "description": "thomas and betts t b 425 1-1/4 insulating sleeve"
+                },
+                "ignore_stage": false
+            },
+            "3": {
+                "stage_number": 3,
+                "sub_stage_code": "1.2",
+                "stage_name": "CLASSIFICATION",
+                "sub_stage_name": "RENTAL_CLASSIFIER",
+                "status": "success",
+                "details": {
+                    "is_verified_flag": false,
+                    "is_mfr_clean_flag": true,
+                    "end_time": "2025-12-15 14:56:07.755607-06:00",
+                    "category": "NON_RENTAL",
+                    "category_id": "N",
+                    "confidence_score": 100,
+                    "description": "thomas and betts t b 425 1-1/4 insulating sleeve"
+                },
+                "ignore_stage": true
+            },
+            "4": {
+                "stage_number": 4,
+                "sub_stage_code": "2.0",
+                "stage_name": "SEMANTIC_SEARCH",
+                "sub_stage_name": "SEMANTIC_SEARCH",
+                "status": "success",
+                "details": {
+                    "is_mfr_clean_flag": "True",
+                    "manufacturer_name": "ABB",
+                    "unspsc": "39131711",
+                    "description": "THOMAS AND BETTS T&B 425 1-1/4 INSULATING SLEEVE",
+                    "confidence_score": {
+                        "manufacturer_name": 62,
+                        "unspsc": 66
+                    },
+                    "is_verified_flag": false,
+                    "end_time": "2025-12-15 14:56:10.828535-06:00"
+                }
+            },
+            "5": {
+                "stage_number": 5,
+                "sub_stage_code": "3.0",
+                "stage_name": "COMPLETE_MATCH",
+                "sub_stage_name": "COMPLETE_MATCH",
+                "status": "success",
+                "details": {
+                    "end_time": "2025-12-15 14:56:11.175491-06:00",
+                    "manufacturer_name": "THOMAS & BETTS",
+                    "description": "THOMAS AND BETTS T&B 425 1-1/4 INSULATING SLEEVE",
+                    "confidence_score": {
+                        "manufacturer_name": 100,
+                        "part_number": 0,
+                        "unspsc": 66
+                    },
+                    "matched_description": null,
+                    "is_verified_flag": false,
+                    "is_mfr_clean_flag": true,
+                    "is_mfr_direct_flag": false,
+                    "unspsc": "39131711",
+                    "unspsc_stage": "SEMANTIC_SEARCH - SEMANTIC_SEARCH"
+                },
+                "matched_mfrs": {
+                    "THOMAS & BETTS": "THOMAS AND BETTS"
+                },
+                "match_result": {
+                    "CleanName": "THOMAS & BETTS",
+                    "UncleanName": "THOMAS AND BETTS",
+                    "MfrNameMatchType": "SINGLE_MATCH",
+                    "PartNumberConfidenceScore": 0,
+                    "ManufacturerNameConfidenceScore": 100,
+                    "UNSPSCConfidenceScore": 0
+                }
+            },
+            "6": {
+                "stage_number": 6,
+                "sub_stage_code": "4.0",
+                "stage_name": "FINETUNED_LLM",
+                "sub_stage_name": "FINETUNED_LLM",
+                "status": "success",
+                "details": {
+                    "confidence_score": {
+                        "manufacturer_name": 100,
+                        "part_number": 100,
+                        "unspsc": 76
+                    },
+                    "manufacturer_name": "THOMAS & BETTS",
+                    "unclean_manufacturer_name": "THOMAS & BETTS",
+                    "part_number": "T B 425",
+                    "unspsc": "39121311",
+                    "description": "THOMAS AND BETTS T B 425 1-1/4 INSULATING SLEEVE",
+                    "end_time": "2025-12-15 14:56:13.636331-06:00",
+                    "is_mfr_clean_flag": true,
+                    "is_verified_flag": false
+                },
+                "rag_trace": {
+                    "is_mfr_dict_provided": true,
+                    "prompt_strategy": "no_context",
+                    "examples_count": 0,
+                    "examples_used": []
+                }
+            },
+            "7": {
+                "stage_number": 7,
+                "sub_stage_code": "5.0",
+                "stage_name": "EXTRACTION_WITH_LLM_AND_WEBSEARCH",
+                "sub_stage_name": "AZURE_AI_AGENT_WITH_BING_SEARCH",
+                "status": "success",
+                "details": {
+                    "end_time": "2025-12-15 14:56:47.248113-06:00",
+                    "description": "THOMAS AND BETTS T B 425 1-1/4 INSULATING SLEEVE",
+                    "web_search_url": "https://www.standardelectricsupply.com/Thomas-And-Betts-425-Insuliner-Insulating-Sleeve",
+                    "search_thread": "thread_DujwACUT4tsQwdw4CeZrXGnJ",
+                    "rank_thread": "thread_FvoUdPJo7e9rgWFMcL2JLTpE",
+                    "is_mfr_clean_flag": true,
+                    "confidence_score": {
+                        "manufacturer_name": 100,
+                        "part_number": 80,
+                        "unspsc": 90
+                    },
+                    "manufacturer_name": "THOMAS & BETTS",
+                    "unclean_manufacturer_name": "THOMAS & BETTS",
+                    "part_number": "425",
+                    "unspsc": "39131711",
+                    "upc": "78621000425",
+                    "is_verified_flag": false
+                },
+                "best_result": {
+                    "ID": 1,
+                    "ManufacturerName": "THOMAS & BETTS",
+                    "PartNumber": "425",
+                    "ItemDescription": "1-1/4 Inch Insuliner Sleeve, Nylon for Use with Rigid/IMC/EMT Conduit",
+                    "UPC": "78621000425",
+                    "UNSPSC": "39131711",
+                    "Source": "https://www.standardelectricsupply.com/Thomas-And-Betts-425-Insuliner-Insulating-Sleeve",
+                    "PriorityMatch": false,
+                    "ManufacturerMatch": "Exact",
+                    "DetectedManufacturer": "THOMAS AND BETTS",
+                    "PartNumberMatch": "Exact",
+                    "DetectedPartNumber": "425",
+                    "ItemDescriptionMatch": "Very High",
+                    "DataSourcesScore": 25,
+                    "PartNumberLengthScore": 10,
+                    "PartNumberMatchScore": 25,
+                    "DescriptionSimilarityScore": 20,
+                    "ManufacturerMatchScore": 50,
+                    "PartNumberScore": 80,
+                    "MfrScore": 95,
+                    "UnspscScore": 90,
+                    "Confidence": 87.75,
+                    "original_desc": "THOMAS AND BETTS T B 425 1-1/4 INSULATING SLEEVE",
+                    "UncleanManufacturerName": "THOMAS & BETTS"
+                },
+                "web_results_ranking_with_confidences": [
+                    {
+                        "ID": 1,
+                        "ManufacturerName": "Thomas & Betts",
+                        "PartNumber": "425",
+                        "ItemDescription": "1-1/4 Inch Insuliner Sleeve, Nylon for Use with Rigid/IMC/EMT Conduit",
+                        "UPC": "78621000425",
+                        "UNSPSC": "39131711",
+                        "Source": "https://www.standardelectricsupply.com/Thomas-And-Betts-425-Insuliner-Insulating-Sleeve",
+                        "PriorityMatch": false,
+                        "ManufacturerMatch": "Exact",
+                        "DetectedManufacturer": "THOMAS AND BETTS",
+                        "PartNumberMatch": "Exact",
+                        "DetectedPartNumber": "425",
+                        "ItemDescriptionMatch": "Very High",
+                        "DataSourcesScore": 25,
+                        "PartNumberLengthScore": 10,
+                        "PartNumberMatchScore": 25,
+                        "DescriptionSimilarityScore": 20,
+                        "ManufacturerMatchScore": 50,
+                        "PartNumberScore": 80,
+                        "MfrScore": 95,
+                        "UnspscScore": 90,
+                        "Confidence": 87.75,
+                        "original_desc": "THOMAS AND BETTS T B 425 1-1/4 INSULATING SLEEVE"
+                    },
+                    {
+                        "ID": 2,
+                        "ManufacturerName": "Thomas & Betts",
+                        "PartNumber": "425",
+                        "ItemDescription": "1-1/4 Inch Insuliner Sleeve, Nylon for Use with Rigid/IMC/EMT Conduit",
+                        "UPC": "78621000425",
+                        "UNSPSC": "",
+                        "Source": "https://www.gordonelectricsupply.com/p/T-B-425-1-1-4-Insulating-Sleeve/5664379",
+                        "PriorityMatch": false,
+                        "ManufacturerMatch": "Exact",
+                        "DetectedManufacturer": "THOMAS AND BETTS",
+                        "PartNumberMatch": "Exact",
+                        "DetectedPartNumber": "425",
+                        "ItemDescriptionMatch": "Very High",
+                        "DataSourcesScore": 25,
+                        "PartNumberLengthScore": 10,
+                        "PartNumberMatchScore": 25,
+                        "DescriptionSimilarityScore": 20,
+                        "ManufacturerMatchScore": 50,
+                        "PartNumberScore": 80,
+                        "MfrScore": 95,
+                        "UnspscScore": 0,
+                        "Confidence": 78.75,
+                        "original_desc": "THOMAS AND BETTS T B 425 1-1/4 INSULATING SLEEVE"
+                    },
+                    {
+                        "ID": 3,
+                        "ManufacturerName": "Thomas & Betts",
+                        "PartNumber": "425",
+                        "ItemDescription": "1-1/4 Inch Insuliner Sleeve, Nylon for Use with Rigid/IMC/EMT Conduit",
+                        "UPC": "78621000425",
+                        "UNSPSC": "",
+                        "Source": "https://www.amazon.com/Thomas-Betts-Nylon-Sleeve-Insuliner/dp/B008SDOWVY",
+                        "PriorityMatch": false,
+                        "ManufacturerMatch": "Exact",
+                        "DetectedManufacturer": "THOMAS AND BETTS",
+                        "PartNumberMatch": "Exact",
+                        "DetectedPartNumber": "425",
+                        "ItemDescriptionMatch": "Very High",
+                        "DataSourcesScore": 25,
+                        "PartNumberLengthScore": 10,
+                        "PartNumberMatchScore": 25,
+                        "DescriptionSimilarityScore": 20,
+                        "ManufacturerMatchScore": 50,
+                        "PartNumberScore": 80,
+                        "MfrScore": 95,
+                        "UnspscScore": 0,
+                        "Confidence": 78.75,
+                        "original_desc": "THOMAS AND BETTS T B 425 1-1/4 INSULATING SLEEVE"
+                    },
+                    {
+                        "ID": 4,
+                        "ManufacturerName": "Thomas & Betts",
+                        "PartNumber": "425",
+                        "ItemDescription": "1-1/4 Inch Insuliner Sleeve, Nylon for Use with Rigid/IMC/EMT Conduit",
+                        "UPC": "78621000425",
+                        "UNSPSC": "",
+                        "Source": "https://essentialparts.com/products/425",
+                        "PriorityMatch": false,
+                        "ManufacturerMatch": "Exact",
+                        "DetectedManufacturer": "THOMAS AND BETTS",
+                        "PartNumberMatch": "Exact",
+                        "DetectedPartNumber": "425",
+                        "ItemDescriptionMatch": "Very High",
+                        "DataSourcesScore": 25,
+                        "PartNumberLengthScore": 10,
+                        "PartNumberMatchScore": 25,
+                        "DescriptionSimilarityScore": 20,
+                        "ManufacturerMatchScore": 50,
+                        "PartNumberScore": 80,
+                        "MfrScore": 95,
+                        "UnspscScore": 0,
+                        "Confidence": 78.75,
+                        "original_desc": "THOMAS AND BETTS T B 425 1-1/4 INSULATING SLEEVE"
+                    },
+                    {
+                        "ID": 5,
+                        "ManufacturerName": "Thomas & Betts",
+                        "PartNumber": "425",
+                        "ItemDescription": "1-1/4 Inch Insuliner Sleeve, Nylon for Use with Rigid/IMC/EMT Conduit",
+                        "UPC": "78621000425",
+                        "UNSPSC": "",
+                        "Source": "https://www.cooper-electric.com/product/detail/86820/THOMAS-BETTS-CO-425",
+                        "PriorityMatch": false,
+                        "ManufacturerMatch": "Exact",
+                        "DetectedManufacturer": "THOMAS AND BETTS",
+                        "PartNumberMatch": "Exact",
+                        "DetectedPartNumber": "425",
+                        "ItemDescriptionMatch": "Very High",
+                        "DataSourcesScore": 25,
+                        "PartNumberLengthScore": 10,
+                        "PartNumberMatchScore": 25,
+                        "DescriptionSimilarityScore": 20,
+                        "ManufacturerMatchScore": 50,
+                        "PartNumberScore": 80,
+                        "MfrScore": 95,
+                        "UnspscScore": 0,
+                        "Confidence": 78.75,
+                        "original_desc": "THOMAS AND BETTS T B 425 1-1/4 INSULATING SLEEVE"
+                    }
+                ]
+            }
+        },
+        "post-processing": {
+            "duplicate_detail_uids": []
+        },
+        "process_output": {
+            "IVCE_DTL_UID": 1421163,
+            "category": "MATERIAL",
+            "category_conf": 100,
+            "category_id": "1",
+            "category_stage": "CLASSIFICATION - DESCRIPTION_CLASSIFIER",
+            "description": "THOMAS AND BETTS T B 425 1-1/4 INSULATING SLEEVE",
+            "description_stage": "EXTRACTION_WITH_LLM_AND_WEBSEARCH - AZURE_AI_AGENT_WITH_BING_SEARCH",
+            "end_time": "2025-12-15 14:56:47.257270-06:00",
+            "has_rpa_boosted_conf": false,
+            "invoice_line_status": "RC-AI",
+            "is_mfr_clean_flag": true,
+            "is_rental": "N",
+            "is_verified_flag": "N",
+            "manufacturer_name": "THOMAS & BETTS",
+            "manufacturer_name_conf": 100,
+            "manufacturer_name_conf_stage": "COMPLETE_MATCH - COMPLETE_MATCH",
+            "manufacturer_name_stage": "EXTRACTION_WITH_LLM_AND_WEBSEARCH - AZURE_AI_AGENT_WITH_BING_SEARCH",
+            "part_number": "425",
+            "part_number_conf": 80,
+            "part_number_conf_stage": "EXTRACTION_WITH_LLM_AND_WEBSEARCH - AZURE_AI_AGENT_WITH_BING_SEARCH",
+            "part_number_stage": "EXTRACTION_WITH_LLM_AND_WEBSEARCH - AZURE_AI_AGENT_WITH_BING_SEARCH",
+            "unspsc": "39131711",
+            "unspsc_conf": 90,
+            "unspsc_conf_stage": "EXTRACTION_WITH_LLM_AND_WEBSEARCH - AZURE_AI_AGENT_WITH_BING_SEARCH",
+            "unspsc_stage": "EXTRACTION_WITH_LLM_AND_WEBSEARCH - AZURE_AI_AGENT_WITH_BING_SEARCH",
+            "upc": "78621000425",
+            "upc_stage": "EXTRACTION_WITH_LLM_AND_WEBSEARCH - AZURE_AI_AGENT_WITH_BING_SEARCH",
+            "web_search_url": "https://www.standardelectricsupply.com/Thomas-And-Betts-425-Insuliner-Insulating-Sleeve"
+        },
+        "response_details": {
+            "status": "success",
+            "message": "Processed invoice detail.",
+            "repliedAt": "2025-12-15 14:56:47.269794-06:00",
+            "replyToId": "2025-12-15 14:55:34.911223-06:00-0001"
+        },
+        "_rid": "3qIhAP-I1vOM0AEAAAAAAA==",
+        "_self": "dbs/3qIhAA==/colls/3qIhAP-I1vM=/docs/3qIhAP-I1vOM0AEAAAAAAA==/",
+        "_etag": "\"df166f66-0000-0200-0000-694076130000\"",
+        "_attachments": "attachments/",
+        "_ts": 1765832211
+    },
+	
+	{
+        "id": "2025-12-15 14:55:34.911223-06:00-0002-1421251",
+        "app_version": "1.2.70-dev.39645",
+        "request_details": {
+            "id": "2025-12-15 14:55:34.911223-06:00-0002",
+            "total_invoice_detail_ids": 50,
+            "api_request_uuid": "d701a0ec-df0a-4ea5-ad65-52fe0f41a46f",
+            "classify": true,
+            "sys_name": "web",
+            "start_time": "2025-12-15 15:03:38.970512-06:00"
+        },
+        "sql_writer": {
+            "status": "committed",
+            "retry_count": 0,
+            "committed_at": "2025-12-15 15:03:56.857950-06:00"
+        },
+        "invoice_details_from_rpa": {
+            "IVCE_DTL_UID": 1421251,
+            "IVCE_HDR_ID": "281672",
+            "IVCE_NUM": "S008986889.003",
+            "ITM_LDSC": "SLTITE 034 UA 100B 3/4IN UL LIQUATITE",
+            "MFR_PRT_NUM": "034 UA 100B",
+            "MFR_NM": "SLTITE",
+            "AKS_PRT_NUM": "AK10433053",
+            "UPC_CD": null,
+            "CLN_MFR_PRT_NUM": "SLTITE 034 UA",
+            "CLN_MFR_NM": null,
+            "CLN_MFR_AI_NM": "ELECTRI FLEX",
+            "CTGY_ID": "1",
+            "IS_RENTAL": "N",
+            "IVCE_VRFN_IND": "N"
+        },
+        "pre-processing": {
+            "ITM_AI_LDSC": "SLTITE 034 UA 100B 3/4IN UL LIQUATITE"
+        },
+        "process_details": {
+            "1": {
+                "stage_number": 1,
+                "sub_stage_code": "1.0",
+                "stage_name": "CLASSIFICATION",
+                "sub_stage_name": "DESCRIPTION_CLASSIFIER",
+                "status": "success",
+                "details": {
+                    "is_verified_flag": false,
+                    "is_mfr_clean_flag": true,
+                    "end_time": "2025-12-15 15:03:45.529045-06:00",
+                    "category": "MATERIAL",
+                    "category_id": "1",
+                    "confidence_score": 100,
+                    "description": "sltite 034 ua 100b 3/4in ul liquatite"
+                },
+                "ignore_stage": false
+            },
+            "3": {
+                "stage_number": 3,
+                "sub_stage_code": "1.2",
+                "stage_name": "CLASSIFICATION",
+                "sub_stage_name": "RENTAL_CLASSIFIER",
+                "status": "success",
+                "details": {
+                    "is_verified_flag": false,
+                    "is_mfr_clean_flag": true,
+                    "end_time": "2025-12-15 15:03:50.723273-06:00",
+                    "category": "NON_RENTAL",
+                    "category_id": "N",
+                    "confidence_score": 100,
+                    "description": "sltite 034 ua 100b 3/4in ul liquatite"
+                },
+                "ignore_stage": true
+            },
+            "4": {
+                "stage_number": 4,
+                "sub_stage_code": "2.0",
+                "stage_name": "SEMANTIC_SEARCH",
+                "sub_stage_name": "SEMANTIC_SEARCH",
+                "status": "success",
+                "details": {
+                    "is_mfr_clean_flag": "True",
+                    "manufacturer_name": "ELECTRI FLEX",
+                    "unspsc": "39131706",
+                    "description": "SLTITE 034 UA 100B 3/4IN UL LIQUATITE",
+                    "confidence_score": {
+                        "manufacturer_name": 79,
+                        "unspsc": 64
+                    },
+                    "is_verified_flag": false,
+                    "end_time": "2025-12-15 15:03:51.435814-06:00"
+                }
+            },
+            "5": {
+                "stage_number": 5,
+                "sub_stage_code": "3.0",
+                "stage_name": "COMPLETE_MATCH",
+                "sub_stage_name": "COMPLETE_MATCH",
+                "status": "success",
+                "details": {
+                    "end_time": "2025-12-15 15:03:51.558754-06:00",
+                    "manufacturer_name": "COOPER ELECTRIC SUPPLY",
+                    "description": "SLTITE 034 UA 100B 3/4IN UL LIQUATITE",
+                    "confidence_score": {
+                        "manufacturer_name": 100,
+                        "part_number": 0,
+                        "unspsc": 64
+                    },
+                    "matched_description": null,
+                    "is_verified_flag": false,
+                    "is_mfr_clean_flag": true,
+                    "is_mfr_direct_flag": false,
+                    "unspsc": "39131706",
+                    "unspsc_stage": "SEMANTIC_SEARCH - SEMANTIC_SEARCH"
+                },
+                "matched_mfrs": {
+                    "COOPER ELECTRIC SUPPLY": "SLTITE"
+                },
+                "match_result": {
+                    "CleanName": "COOPER ELECTRIC SUPPLY",
+                    "UncleanName": "SLTITE",
+                    "MfrNameMatchType": "SINGLE_MATCH",
+                    "PartNumberConfidenceScore": 0,
+                    "ManufacturerNameConfidenceScore": 100,
+                    "UNSPSCConfidenceScore": 0
+                }
+            },
+            "6": {
+                "stage_number": 6,
+                "sub_stage_code": "4.0",
+                "stage_name": "FINETUNED_LLM",
+                "sub_stage_name": "FINETUNED_LLM",
+                "status": "success",
+                "details": {
+                    "confidence_score": {
+                        "manufacturer_name": 100,
+                        "part_number": 100,
+                        "unspsc": 100
+                    },
+                    "manufacturer_name": "ELECTRI FLEX",
+                    "unclean_manufacturer_name": "ELECTRI FLEX",
+                    "part_number": "SLTITE 034 UA",
+                    "unspsc": "39131706",
+                    "description": "SLTITE 034 UA 100B 3/4IN UL LIQUATITE",
+                    "end_time": "2025-12-15 15:03:52.584667-06:00",
+                    "is_mfr_clean_flag": true,
+                    "is_verified_flag": false
+                },
+                "rag_trace": {
+                    "is_mfr_dict_provided": true,
+                    "prompt_strategy": "patterns_for_extraction",
+                    "examples_count": 2,
+                    "examples_used": [
+                        {
+                            "input": "012 UA MR SLTITE 012 UA MR 1/2IN UL LIQUATITE",
+                            "output": {
+                                "ManufacturerName": "ELECTRI FLEX",
+                                "PartNumber": "012UA-MR",
+                                "UNSPSC": "39121420"
+                            }
+                        },
+                        {
+                            "input": "114 UA MR SLTITE 114 UA MR 11/4IN UL LIQUATITE",
+                            "output": {
+                                "ManufacturerName": "ELECTRI FLEX",
+                                "PartNumber": "114UA-MR",
+                                "UNSPSC": "39131706"
+                            }
+                        }
+                    ]
+                }
+            }
+        },
+        "post-processing": {
+            "duplicate_detail_uids": [
+                910950,
+                1421523
+            ]
+        },
+        "process_output": {
+            "IVCE_DTL_UID": 1421251,
+            "category": "MATERIAL",
+            "category_conf": 100,
+            "category_id": "1",
+            "category_stage": "CLASSIFICATION - DESCRIPTION_CLASSIFIER",
+            "description": "SLTITE 034 UA 100B 3/4IN UL LIQUATITE",
+            "description_stage": "FINETUNED_LLM - FINETUNED_LLM",
+            "end_time": "2025-12-15 15:03:52.586215-06:00",
+            "has_rpa_boosted_conf": true,
+            "invoice_line_status": "RC-AI",
+            "is_mfr_clean_flag": true,
+            "is_rental": "N",
+            "is_verified_flag": "N",
+            "manufacturer_name": "ELECTRI FLEX",
+            "manufacturer_name_conf": 100,
+            "manufacturer_name_conf_stage": "FINETUNED_LLM - FINETUNED_LLM",
+            "manufacturer_name_stage": "FINETUNED_LLM - FINETUNED_LLM",
+            "part_number": "SLTITE 034 UA",
+            "part_number_conf": 100,
+            "part_number_conf_stage": "FINETUNED_LLM - FINETUNED_LLM",
+            "part_number_stage": "FINETUNED_LLM - FINETUNED_LLM",
+            "unspsc": "39131706",
+            "unspsc_conf": 100,
+            "unspsc_conf_stage": "FINETUNED_LLM - FINETUNED_LLM",
+            "unspsc_stage": "FINETUNED_LLM - FINETUNED_LLM",
+            "web_search_url": "UNDEFINED"
+        },
+        "response_details": {
+            "status": "success",
+            "message": "Processed invoice detail.",
+            "repliedAt": "2025-12-15 15:03:52.589123-06:00",
+            "replyToId": "2025-12-15 14:55:34.911223-06:00-0002"
+        },
+        "_rid": "3qIhAP-I1vPf0AEAAAAAAA==",
+        "_self": "dbs/3qIhAA==/colls/3qIhAP-I1vM=/docs/3qIhAP-I1vPf0AEAAAAAAA==/",
+        "_etag": "\"e0166b45-0000-0200-0000-694077bc0000\"",
+        "_attachments": "attachments/",
+        "_ts": 1765832636
+    },
+	
+    {
+        "id": "2025-12-15 14:55:34.911223-06:00-0002-1421257",
+        "app_version": "1.2.70-dev.39645",
+        "request_details": {
+            "id": "2025-12-15 14:55:34.911223-06:00-0002",
+            "total_invoice_detail_ids": 50,
+            "api_request_uuid": "d701a0ec-df0a-4ea5-ad65-52fe0f41a46f",
+            "classify": true,
+            "sys_name": "web",
+            "start_time": "2025-12-15 15:00:03.891066-06:00"
+        },
+        "sql_writer": {
+            "status": "committed",
+            "retry_count": 0,
+            "committed_at": "2025-12-15 15:00:21.205608-06:00"
+        },
+        "invoice_details_from_rpa": {
+            "IVCE_DTL_UID": 1421257,
+            "IVCE_HDR_ID": "282047",
+            "IVCE_NUM": "S004113517.011",
+            "ITM_LDSC": "SIE B240 BREAKER 40A 2P 120/240V 10K BL",
+            "MFR_PRT_NUM": "B240",
+            "MFR_NM": "Siemens",
+            "AKS_PRT_NUM": null,
+            "UPC_CD": null,
+            "CLN_MFR_PRT_NUM": "B240",
+            "CLN_MFR_NM": null,
+            "CLN_MFR_AI_NM": "SIEMENS",
+            "CTGY_ID": "1",
+            "IS_RENTAL": "N",
+            "IVCE_VRFN_IND": "Y"
+        },
+        "pre-processing": {
+            "ITM_AI_LDSC": "Siemens SIE B240 BREAKER 40A 2P 120/240V 10K BL"
+        },
+        "process_details": {
+            "1": {
+                "stage_number": 1,
+                "sub_stage_code": "1.0",
+                "stage_name": "CLASSIFICATION",
+                "sub_stage_name": "DESCRIPTION_CLASSIFIER",
+                "status": "success",
+                "details": {
+                    "is_verified_flag": false,
+                    "is_mfr_clean_flag": true,
+                    "end_time": "2025-12-15 15:00:10.495406-06:00",
+                    "category": "MATERIAL",
+                    "category_id": "1",
+                    "confidence_score": 100,
+                    "description": "siemens sie b240 breaker 40a 2p 120/240v 10k bl"
+                },
+                "ignore_stage": false
+            },
+            "3": {
+                "stage_number": 3,
+                "sub_stage_code": "1.2",
+                "stage_name": "CLASSIFICATION",
+                "sub_stage_name": "RENTAL_CLASSIFIER",
+                "status": "success",
+                "details": {
+                    "is_verified_flag": false,
+                    "is_mfr_clean_flag": true,
+                    "end_time": "2025-12-15 15:00:15.760653-06:00",
+                    "category": "NON_RENTAL",
+                    "category_id": "N",
+                    "confidence_score": 100,
+                    "description": "siemens sie b240 breaker 40a 2p 120/240v 10k bl"
+                },
+                "ignore_stage": true
+            },
+            "4": {
+                "stage_number": 4,
+                "sub_stage_code": "2.0",
+                "stage_name": "SEMANTIC_SEARCH",
+                "sub_stage_name": "SEMANTIC_SEARCH",
+                "status": "success",
+                "details": {
+                    "is_mfr_clean_flag": false,
+                    "unspsc": "39121600",
+                    "description": "SIEMENS SIE B240 BREAKER 40A 2P 120/240V 10K BL",
+                    "confidence_score": {
+                        "unspsc": 87
+                    },
+                    "is_verified_flag": false,
+                    "end_time": "2025-12-15 15:00:16.835626-06:00"
+                }
+            },
+            "5": {
+                "stage_number": 5,
+                "sub_stage_code": "3.0",
+                "stage_name": "COMPLETE_MATCH",
+                "sub_stage_name": "COMPLETE_MATCH",
+                "status": "success",
+                "details": {
+                    "end_time": "2025-12-15 15:00:18.450923-06:00",
+                    "manufacturer_name": "SIEMENS",
+                    "part_number": "B240",
+                    "upc": "783643263574",
+                    "unspsc": "39121616",
+                    "item_source_name": "TRD_SVC",
+                    "desc_source_name": "TRD_SVC",
+                    "description": "SIEMENS SIE B240 BREAKER 40A 2P 120/240V 10K BL",
+                    "confidence_score": {
+                        "manufacturer_name": 100,
+                        "part_number": 100,
+                        "unspsc": 100
+                    },
+                    "matched_description": "SIEM5 B240 2P 40A CKT BRKR",
+                    "is_verified_flag": true,
+                    "is_mfr_clean_flag": true,
+                    "is_mfr_direct_flag": true
+                },
+                "matched_mfrs": {
+                    "SIEMENS": "SIEMENS"
+                },
+                "match_result": {
+                    "MfrPartNum": "B240",
+                    "DescriptionID": "1062101",
+                    "ItemSourceName": "TRD_SVC",
+                    "MfrName": "SIEMENS",
+                    "UNSPSC": "39121616",
+                    "DescSourceName": "TRD_SVC",
+                    "ItemID": 757708,
+                    "ItemDescription": "SIEM5 B240 2P 40A CKT BRKR",
+                    "UPC": "783643263574",
+                    "CleanName": "SIEMENS",
+                    "UncleanName": "SIEMENS",
+                    "MfrNameMatchType": "SINGLE_MATCH",
+                    "DescriptionSimilarity": 0.8045722443688571,
+                    "PartNumberConfidenceScore": 100,
+                    "ManufacturerNameConfidenceScore": 100,
+                    "UNSPSCConfidenceScore": 100,
+                    "ManufacturerMatchRelationship": "DIRECT",
+                    "IsVerified": true
+                }
+            },
+            "8": {
+                "stage_number": 8,
+                "sub_stage_code": "6.0",
+                "stage_name": "CONTEXT_VALIDATOR",
+                "sub_stage_name": "CONTEXT_VALIDATOR",
+                "status": "success",
+                "details": {
+                    "end_time": "2025-12-15 15:00:20.029040-06:00",
+                    "is_direct_match": true,
+                    "context_type": "DIRECT_MATCH",
+                    "reason": "The invoice text and the matched database item both describe a Siemens B240 circuit breaker with identical specifications, including amperage, poles, and voltage. The slight variation in description format does not affect the core product identity.",
+                    "input_invoice_text": "Siemens SIE B240 BREAKER 40A 2P 120/240V 10K BL",
+                    "input_matched_description": "SIEM5 B240 2P 40A CKT BRKR",
+                    "validated_stage_number": 5,
+                    "validated_stage_name": "COMPLETE_MATCH"
+                },
+                "is_validation_stage": true,
+                "is_final_success": true
+            }
+        },
+        "post-processing": {
+            "duplicate_detail_uids": [
+                1421529
+            ]
+        },
+        "process_output": {
+            "IVCE_DTL_UID": 1421257,
+            "category": "MATERIAL",
+            "category_conf": 100,
+            "category_id": "1",
+            "category_stage": "CLASSIFICATION - DESCRIPTION_CLASSIFIER",
+            "description": "SIEMENS SIE B240 BREAKER 40A 2P 120/240V 10K BL",
+            "description_stage": "COMPLETE_MATCH - COMPLETE_MATCH",
+            "end_time": "2025-12-15 15:00:20.035598-06:00",
+            "has_rpa_boosted_conf": true,
+            "invoice_line_status": "RC-AI",
+            "is_mfr_clean_flag": true,
+            "is_rental": "N",
+            "is_verified_flag": "Y",
+            "manufacturer_name": "SIEMENS",
+            "manufacturer_name_conf": 100,
+            "manufacturer_name_conf_stage": "COMPLETE_MATCH - COMPLETE_MATCH",
+            "manufacturer_name_stage": "COMPLETE_MATCH - COMPLETE_MATCH",
+            "part_number": "B240",
+            "part_number_conf": 100,
+            "part_number_conf_stage": "COMPLETE_MATCH - COMPLETE_MATCH",
+            "part_number_stage": "COMPLETE_MATCH - COMPLETE_MATCH",
+            "unspsc": "39121616",
+            "unspsc_conf": 100,
+            "unspsc_conf_stage": "COMPLETE_MATCH - COMPLETE_MATCH",
+            "unspsc_stage": "COMPLETE_MATCH - COMPLETE_MATCH",
+            "upc": "783643263574",
+            "upc_stage": "COMPLETE_MATCH - COMPLETE_MATCH",
+            "web_search_url": "UNDEFINED"
+        },
+        "response_details": {
+            "status": "success",
+            "message": "Processed invoice detail.",
+            "repliedAt": "2025-12-15 15:00:20.061389-06:00",
+            "replyToId": "2025-12-15 14:55:34.911223-06:00-0002"
+        },
+        "_rid": "3qIhAP-I1vPQ0AEAAAAAAA==",
+        "_self": "dbs/3qIhAA==/colls/3qIhAP-I1vM=/docs/3qIhAP-I1vPQ0AEAAAAAAA==/",
+        "_etag": "\"df16b2cf-0000-0200-0000-694076e50000\"",
+        "_attachments": "attachments/",
+        "_ts": 1765832421
+    },
+
+    {
+        "id": "2025-12-14 16:03:40.111809-06:00-0007-1421807",
+        "app_version": "1.2.69-dev.39595",
+        "request_details": {
+            "id": "2025-12-14 16:03:40.111809-06:00-0007",
+            "total_invoice_detail_ids": 50,
+            "api_request_uuid": "d2fbb7f0-9028-4704-84be-dcc4535329cf",
+            "classify": true,
+            "sys_name": "kirill",
+            "start_time": "2025-12-14 16:26:12.771591-06:00"
+        },
+        "sql_writer": {
+            "status": "committed",
+            "retry_count": 0,
+            "committed_at": "2025-12-14 16:26:54.171103-06:00"
+        },
+        "invoice_details_from_rpa": {
+            "IVCE_DTL_UID": 1421807,
+            "IVCE_HDR_ID": "281599",
+            "IVCE_NUM": "S142037809.001",
+            "ITM_LDSC": "ORB SSB-4-A134 2417755 ASSEMBLY - SW1: SSB-T5 LVBS-4-134",
+            "MFR_PRT_NUM": "SSB-4-A134",
+            "MFR_NM": "ORBIT",
+            "AKS_PRT_NUM": null,
+            "UPC_CD": null,
+            "CLN_MFR_PRT_NUM": "SSB-4-A134",
+            "CLN_MFR_NM": null,
+            "CLN_MFR_AI_NM": "ORBIT INDUSTRIES",
+            "CTGY_ID": "1",
+            "IS_RENTAL": "N",
+            "IVCE_VRFN_IND": "N"
+        },
+        "pre-processing": {
+            "ITM_AI_LDSC": "ORBIT ORB SSB-4-A134 2417755 ASSEMBLY - SW1: SSB-T5 LVBS-4-134"
+        },
+        "process_details": {
+            "1": {
+                "stage_number": 1,
+                "sub_stage_code": "1.0",
+                "stage_name": "CLASSIFICATION",
+                "sub_stage_name": "DESCRIPTION_CLASSIFIER",
+                "status": "success",
+                "details": {
+                    "is_verified_flag": false,
+                    "is_mfr_clean_flag": true,
+                    "end_time": "2025-12-14 16:26:24.405194-06:00",
+                    "category": "MATERIAL",
+                    "category_id": "1",
+                    "confidence_score": 100,
+                    "description": "orbit orb ssb-4-a134 2417755 assembly - sw1 ssb-t5 lvbs-4-134"
+                },
+                "ignore_stage": false
+            },
+            "3": {
+                "stage_number": 3,
+                "sub_stage_code": "1.2",
+                "stage_name": "CLASSIFICATION",
+                "sub_stage_name": "RENTAL_CLASSIFIER",
+                "status": "success",
+                "details": {
+                    "is_verified_flag": false,
+                    "is_mfr_clean_flag": true,
+                    "end_time": "2025-12-14 16:26:29.762673-06:00",
+                    "category": "NON_RENTAL",
+                    "category_id": "N",
+                    "confidence_score": 100,
+                    "description": "orbit orb ssb-4-a134 2417755 assembly - sw1 ssb-t5 lvbs-4-134"
+                },
+                "ignore_stage": true
+            },
+            "4": {
+                "stage_number": 4,
+                "sub_stage_code": "2.0",
+                "stage_name": "SEMANTIC_SEARCH",
+                "sub_stage_name": "SEMANTIC_SEARCH",
+                "status": "success",
+                "details": {
+                    "is_mfr_clean_flag": false,
+                    "unspsc": "39120000",
+                    "description": "ORBIT ORB SSB-4-A134 2417755 ASSEMBLY - SW1: SSB-T5 LVBS-4-134",
+                    "confidence_score": {
+                        "unspsc": 80
+                    },
+                    "is_verified_flag": false,
+                    "end_time": "2025-12-14 16:26:31.257981-06:00"
+                }
+            },
+            "5": {
+                "stage_number": 5,
+                "sub_stage_code": "3.0",
+                "stage_name": "COMPLETE_MATCH",
+                "sub_stage_name": "COMPLETE_MATCH",
+                "status": "success",
+                "details": {
+                    "end_time": "2025-12-14 16:26:32.440305-06:00",
+                    "manufacturer_name": "ORBIT INDUSTRIES",
+                    "part_number": "SSBT5",
+                    "upc": "835243027992",
+                    "unspsc": "39121321",
+                    "item_source_name": "TRD_SVC",
+                    "desc_source_name": "TRD_SVC",
+                    "description": "ORBIT ORB SSB-4-A134 2417755 ASSEMBLY - SW1: SSB-T5 LVBS-4-134",
+                    "confidence_score": {
+                        "manufacturer_name": 100,
+                        "part_number": 100,
+                        "unspsc": 87
+                    },
+                    "matched_description": "ORBT SSB-T5 TELESCOPING BRACKET",
+                    "is_verified_flag": false,
+                    "is_mfr_clean_flag": true,
+                    "is_mfr_direct_flag": true
+                },
+                "matched_mfrs": {
+                    "ORBIT INDUSTRIES": "ORBIT"
+                },
+                "match_result": {
+                    "ItemSourceName": "TRD_SVC",
+                    "UNSPSC": "39121321",
+                    "MfrName": "ORBIT INDUSTRIES",
+                    "UPC": "835243027992",
+                    "MfrPartNum": "SSBT5",
+                    "ItemID": 895100,
+                    "DescriptionID": "1358032",
+                    "ItemDescription": "ORBT SSB-T5 TELESCOPING BRACKET",
+                    "DescSourceName": "TRD_SVC",
+                    "CleanName": "ORBIT INDUSTRIES",
+                    "UncleanName": "ORBIT",
+                    "MfrNameMatchType": "SINGLE_MATCH",
+                    "DescriptionSimilarity": 0.6518021834298842,
+                    "PartNumberConfidenceScore": 100,
+                    "ManufacturerNameConfidenceScore": 100,
+                    "UNSPSCConfidenceScore": 87,
+                    "ManufacturerMatchRelationship": "DIRECT",
+                    "IsVerified": true
+                },
+                "is_invalidated": true
+            },
+            "6": {
+                "stage_number": 6,
+                "sub_stage_code": "4.0",
+                "stage_name": "FINETUNED_LLM",
+                "sub_stage_name": "FINETUNED_LLM",
+                "status": "success",
+                "details": {
+                    "confidence_score": {
+                        "manufacturer_name": 100,
+                        "part_number": 97,
+                        "unspsc": 70
+                    },
+                    "manufacturer_name": "ORBIT INDUSTRIES",
+                    "unclean_manufacturer_name": "ORBIT INDUSTRIES",
+                    "part_number": "ORB SSB-4-A134",
+                    "unspsc": "39121303",
+                    "description": "ORBIT ORB SSB-4-A134 2417755 ASSEMBLY - SW1 SSB-T5 LVBS-4-134",
+                    "end_time": "2025-12-14 16:26:34.826577-06:00",
+                    "is_mfr_clean_flag": true,
+                    "is_verified_flag": false
+                },
+                "rag_trace": {
+                    "is_mfr_dict_provided": true,
+                    "prompt_strategy": "no_context",
+                    "examples_count": 0,
+                    "examples_used": []
+                }
+            },
+            "7": {
+                "stage_number": 7,
+                "sub_stage_code": "5.0",
+                "stage_name": "EXTRACTION_WITH_LLM_AND_WEBSEARCH",
+                "sub_stage_name": "AZURE_AI_AGENT_WITH_BING_SEARCH",
+                "status": "success",
+                "details": {
+                    "end_time": "2025-12-14 16:26:53.582223-06:00",
+                    "description": "ORBIT ORB SSB-4-A134 2417755 ASSEMBLY - SW1 SSB-T5 LVBS-4-134",
+                    "web_search_url": "https://www.rexelusa.com/p/2417755/orbit-industries/assembly-sw1-ssb-t5-lvbs-4-134/ssb-4-a134",
+                    "search_thread": "thread_jdG9bULJzPAOgzlo1LfU28VK",
+                    "rank_thread": "thread_YkqLzclQ6WCqXedSO8whiwPm",
+                    "is_mfr_clean_flag": true,
+                    "confidence_score": {
+                        "manufacturer_name": 100,
+                        "part_number": 90,
+                        "unspsc": 80
+                    },
+                    "manufacturer_name": "ORBIT INDUSTRIES",
+                    "unclean_manufacturer_name": "ORBIT INDUSTRIES",
+                    "part_number": "SSB-4-A134",
+                    "unspsc": "39120000",
+                    "upc": "",
+                    "is_verified_flag": false,
+                    "unspsc_stage": "SEMANTIC_SEARCH - SEMANTIC_SEARCH"
+                },
+                "best_result": {
+                    "ID": 1,
+                    "ManufacturerName": "ORBIT INDUSTRIES",
+                    "PartNumber": "SSB-4-A134",
+                    "ItemDescription": "ASSEMBLY - SW1: SSB-T5 LVBS-4-134",
+                    "UPC": "",
+                    "UNSPSC": "",
+                    "Source": "https://www.rexelusa.com/p/2417755/orbit-industries/assembly-sw1-ssb-t5-lvbs-4-134/ssb-4-a134",
+                    "PriorityMatch": true,
+                    "ManufacturerMatch": "Exact",
+                    "DetectedManufacturer": "ORBIT",
+                    "PartNumberMatch": "Strong",
+                    "DetectedPartNumber": "SSB-4-A134",
+                    "ItemDescriptionMatch": "Very High",
+                    "DataSourcesScore": 25,
+                    "PartNumberLengthScore": 15,
+                    "PartNumberMatchScore": 20,
+                    "DescriptionSimilarityScore": 20,
+                    "ManufacturerMatchScore": 50,
+                    "PartNumberScore": 80,
+                    "MfrScore": 95,
+                    "UnspscScore": 0,
+                    "Confidence": 78.75,
+                    "original_desc": "ORBIT ORB SSB-4-A134 2417755 ASSEMBLY - SW1 SSB-T5 LVBS-4-134",
+                    "UncleanManufacturerName": "ORBIT INDUSTRIES"
+                },
+                "web_results_ranking_with_confidences": [
+                    {
+                        "ID": 1,
+                        "ManufacturerName": "Orbit Industries",
+                        "PartNumber": "SSB-4-A134",
+                        "ItemDescription": "ASSEMBLY - SW1: SSB-T5 LVBS-4-134",
+                        "UPC": "",
+                        "UNSPSC": "",
+                        "Source": "https://www.rexelusa.com/p/2417755/orbit-industries/assembly-sw1-ssb-t5-lvbs-4-134/ssb-4-a134",
+                        "PriorityMatch": true,
+                        "ManufacturerMatch": "Exact",
+                        "DetectedManufacturer": "ORBIT",
+                        "PartNumberMatch": "Strong",
+                        "DetectedPartNumber": "SSB-4-A134",
+                        "ItemDescriptionMatch": "Very High",
+                        "DataSourcesScore": 25,
+                        "PartNumberLengthScore": 15,
+                        "PartNumberMatchScore": 20,
+                        "DescriptionSimilarityScore": 20,
+                        "ManufacturerMatchScore": 50,
+                        "PartNumberScore": 80,
+                        "MfrScore": 95,
+                        "UnspscScore": 0,
+                        "Confidence": 78.75,
+                        "original_desc": "ORBIT ORB SSB-4-A134 2417755 ASSEMBLY - SW1 SSB-T5 LVBS-4-134"
+                    },
+                    {
+                        "ID": 2,
+                        "ManufacturerName": "Orbit Industries",
+                        "PartNumber": "SSB-4-A134-PTRA6STRBP",
+                        "ItemDescription": "ASSEMBLY - B: SSB-T5 LVBS-4-134 PTRA6STRBP",
+                        "UPC": "",
+                        "UNSPSC": "",
+                        "Source": "https://www.rexelusa.com/p/2417752/orbit-industries/assembly-b-ssb-t5-lvbs-4-134-ptra6strbp/ssb-4-a134-ptra6strbp",
+                        "PriorityMatch": true,
+                        "ManufacturerMatch": "Exact",
+                        "DetectedManufacturer": "ORBIT",
+                        "PartNumberMatch": "Partial",
+                        "DetectedPartNumber": "SSB-4-A134",
+                        "ItemDescriptionMatch": "Medium",
+                        "DataSourcesScore": 25,
+                        "PartNumberLengthScore": 15,
+                        "PartNumberMatchScore": 15,
+                        "DescriptionSimilarityScore": 5,
+                        "ManufacturerMatchScore": 50,
+                        "PartNumberScore": 60,
+                        "MfrScore": 80,
+                        "UnspscScore": 0,
+                        "Confidence": 63,
+                        "original_desc": "ORBIT ORB SSB-4-A134 2417755 ASSEMBLY - SW1 SSB-T5 LVBS-4-134"
+                    },
+                    {
+                        "ID": 3,
+                        "ManufacturerName": "Orbit Industries",
+                        "PartNumber": "LVBS-4-A134",
+                        "ItemDescription": "Uma-Lvbs + 4Sdb-Mko-Pt-10 + 4Ar1G-34",
+                        "UPC": "83524302730",
+                        "UNSPSC": "",
+                        "Source": "https://www.gordonelectricsupply.com/p/orbit-lvbs-4-a134-uma-lvbs-4sdb-mko-pt-10-4ar1g-34/7136645",
+                        "PriorityMatch": false,
+                        "ManufacturerMatch": "Exact",
+                        "DetectedManufacturer": "ORBIT",
+                        "PartNumberMatch": "No Match",
+                        "DetectedPartNumber": "",
+                        "ItemDescriptionMatch": "Low",
+                        "DataSourcesScore": 25,
+                        "PartNumberLengthScore": 15,
+                        "PartNumberMatchScore": 0,
+                        "DescriptionSimilarityScore": 0,
+                        "ManufacturerMatchScore": 50,
+                        "PartNumberScore": 40,
+                        "MfrScore": 75,
+                        "UnspscScore": 0,
+                        "Confidence": 51.75,
+                        "original_desc": "ORBIT ORB SSB-4-A134 2417755 ASSEMBLY - SW1 SSB-T5 LVBS-4-134"
+                    },
+                    {
+                        "ID": 4,
+                        "ManufacturerName": "Orbit Industries",
+                        "PartNumber": "SSB-T5",
+                        "ItemDescription": "Ssb Fits 4S, 5S Or 5 Boxes, Adjustable 15-25",
+                        "UPC": "83524302799",
+                        "UNSPSC": "",
+                        "Source": "https://www.gordonelectricsupply.com/p/Orbit-Ssb-T5-Ssb-Fits-4S-5S-Or-5-Boxes-Adj-15-25/6635265",
+                        "PriorityMatch": false,
+                        "ManufacturerMatch": "Exact",
+                        "DetectedManufacturer": "ORBIT",
+                        "PartNumberMatch": "Exact",
+                        "DetectedPartNumber": "SSB-T5",
+                        "ItemDescriptionMatch": "Medium",
+                        "DataSourcesScore": 25,
+                        "PartNumberLengthScore": 10,
+                        "PartNumberMatchScore": 25,
+                        "DescriptionSimilarityScore": 5,
+                        "ManufacturerMatchScore": 50,
+                        "PartNumberScore": 65,
+                        "MfrScore": 80,
+                        "UnspscScore": 0,
+                        "Confidence": 65.25,
+                        "original_desc": "ORBIT ORB SSB-4-A134 2417755 ASSEMBLY - SW1 SSB-T5 LVBS-4-134"
+                    },
+                    {
+                        "ID": 5,
+                        "ManufacturerName": "Orbit Industries",
+                        "PartNumber": "SSB-A4",
+                        "ItemDescription": "ORB SSB-A4 SSB-T5 + UMA + 4SD",
+                        "UPC": "835243028975",
+                        "UNSPSC": "",
+                        "Source": "https://www.platt.com/p/2140889/orbit-industries/orb-ssb-a4-ssb-t5-uma-4sd/835243028975/orbssba4",
+                        "PriorityMatch": true,
+                        "ManufacturerMatch": "Exact",
+                        "DetectedManufacturer": "ORBIT",
+                        "PartNumberMatch": "No Match",
+                        "DetectedPartNumber": "",
+                        "ItemDescriptionMatch": "Low",
+                        "DataSourcesScore": 25,
+                        "PartNumberLengthScore": 10,
+                        "PartNumberMatchScore": 0,
+                        "DescriptionSimilarityScore": 0,
+                        "ManufacturerMatchScore": 50,
+                        "PartNumberScore": 35,
+                        "MfrScore": 75,
+                        "UnspscScore": 0,
+                        "Confidence": 49.5,
+                        "original_desc": "ORBIT ORB SSB-4-A134 2417755 ASSEMBLY - SW1 SSB-T5 LVBS-4-134"
+                    }
+                ]
+            },
+            "8": {
+                "stage_number": 8,
+                "sub_stage_code": "6.0",
+                "stage_name": "CONTEXT_VALIDATOR",
+                "sub_stage_name": "CONTEXT_VALIDATOR",
+                "status": "success",
+                "details": {
+                    "end_time": "2025-12-14 16:26:33.667848-06:00",
+                    "is_direct_match": false,
+                    "context_type": "LOT_OR_KIT",
+                    "reason": "The invoice text describes an assembly ('ASSEMBLY - SW1: SSB-T5 LVBS-4-134'), which suggests a bundle or kit containing multiple components. The matched database item ('ORBT SSB-T5 TELESCOPING BRACKET') appears to be one component of this assembly, not the primary item being sold.",
+                    "input_invoice_text": "ORBIT ORB SSB-4-A134 2417755 ASSEMBLY - SW1: SSB-T5 LVBS-4-134",
+                    "input_matched_description": "ORBT SSB-T5 TELESCOPING BRACKET",
+                    "validated_stage_number": 5,
+                    "validated_stage_name": "COMPLETE_MATCH"
+                },
+                "is_validation_stage": true,
+                "is_final_success": false
+            }
+        },
+        "post-processing": {
+            "duplicate_detail_uids": []
+        },
+        "process_output": {
+            "IVCE_DTL_UID": 1421807,
+            "category": "MATERIAL",
+            "category_conf": 100,
+            "category_id": "1",
+            "category_stage": "CLASSIFICATION - DESCRIPTION_CLASSIFIER",
+            "description": "ORBIT ORB SSB-4-A134 2417755 ASSEMBLY - SW1 SSB-T5 LVBS-4-134",
+            "description_stage": "EXTRACTION_WITH_LLM_AND_WEBSEARCH - AZURE_AI_AGENT_WITH_BING_SEARCH",
+            "end_time": "2025-12-14 16:26:53.586990-06:00",
+            "has_rpa_boosted_conf": true,
+            "invoice_line_status": "RC-AI",
+            "is_mfr_clean_flag": true,
+            "is_rental": "N",
+            "is_verified_flag": "N",
+            "manufacturer_name": "ORBIT INDUSTRIES",
+            "manufacturer_name_conf": 100,
+            "manufacturer_name_conf_stage": "FINETUNED_LLM - FINETUNED_LLM",
+            "manufacturer_name_stage": "EXTRACTION_WITH_LLM_AND_WEBSEARCH - AZURE_AI_AGENT_WITH_BING_SEARCH",
+            "part_number": "SSB-4-A134",
+            "part_number_conf": 90,
+            "part_number_conf_stage": "EXTRACTION_WITH_LLM_AND_WEBSEARCH - AZURE_AI_AGENT_WITH_BING_SEARCH",
+            "part_number_stage": "EXTRACTION_WITH_LLM_AND_WEBSEARCH - AZURE_AI_AGENT_WITH_BING_SEARCH",
+            "unspsc": "39120000",
+            "unspsc_conf": 80,
+            "unspsc_conf_stage": "SEMANTIC_SEARCH - SEMANTIC_SEARCH",
+            "unspsc_stage": "SEMANTIC_SEARCH - SEMANTIC_SEARCH",
+            "upc": "UNDEFINED",
+            "upc_stage": "UNDEFINED",
+            "web_search_url": "https://www.rexelusa.com/p/2417755/orbit-industries/assembly-sw1-ssb-t5-lvbs-4-134/ssb-4-a134"
+        },
+        "response_details": {
+            "status": "success",
+            "message": "Processed invoice detail.",
+            "repliedAt": "2025-12-14 16:26:53.588082-06:00",
+            "replyToId": "2025-12-14 16:03:40.111809-06:00-0007"
+        },
+        "_rid": "3qIhAP-I1vM8zQEAAAAAAA==",
+        "_self": "dbs/3qIhAA==/colls/3qIhAP-I1vM=/docs/3qIhAP-I1vM8zQEAAAAAAA==/",
+        "_etag": "\"5916b2d6-0000-0200-0000-693f39ad0000\"",
+        "_attachments": "attachments/",
+        "_ts": 1765751213
+    }	
+]
