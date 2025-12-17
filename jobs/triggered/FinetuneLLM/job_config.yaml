@@ -1,0 +1,60 @@
+# The number of training data table rows to be fetched for one fine tuning operation.
+# If the file size exceeds for rows configured here, rows fitting
+# upto MAX_TRAINING_FILE_SIZE will be considered.
+MIN_DESCRIPTIONS_FOR_TRAINING: 10000
+
+# The MAX training file size in MB to be used for fine tuning.
+# (current file size limit on azure is 512MB.)
+MAX_TRAINING_FILE_SIZE:  480 # 480MB
+
+# This parameter decides on how the training data will be uploaded to OpenAI
+# file : New file will be created locally and the content will be uploaded.
+# io_buffer : the data is transferred through BytesIO Buffer.
+TRAINING_DATA_TRANSFER_TYPE: 'file'
+
+# This parameter is the TPM to set for a deployment once it has been successful enough to be the new official model
+# It is already how many thousand TPM, so 20 = 20,000 TPM
+# This helps us to not hit the Quota.
+TOKEN_COUNT: 50
+
+# The Training data version(TRAINING_DATA_VER_COL_NAME) string to be used to fetch the training data.
+DATA_VERSION_TO_TRAIN: 'NEW'
+
+DELETE_OLD_DEPLOYMENTS:
+  PROD: false
+  DEV: true
+
+WEB_APP_BASE_URL: 'https://aks-wa-sr-dev-gxdhgubrecbce2cb.eastus2-01.azurewebsites.net'
+
+TEST_DATA_FILE: 'AI_Test_data_5K_records_for_llm_evaluation.xlsx'
+TEST_RESULTS_FOLDER: 'test_results/'
+
+INPUT_FIELD: 'ITM_LDSC'
+TEST_COLS_TO_KEEP:
+  - 'Label_ID'
+  - 'IVCE_DTL_UID'
+  - 'ITM_LDSC'
+  - 'CLASSIFICATION'
+
+FIELD_NAMES:
+  - 'MFR_NAME'
+  - 'MFR_PN'
+  - 'UNSPSC_CODE'
+
+CONFIDENCE_THRESHOLDS:
+  MFR_NAME: 95
+  MFR_PN: 100
+  UNSPSC_CODE: 95
+
+ACCURACY_THRESHOLDS:
+  MFR_NAME: 70
+  MFR_PN: 80
+  UNSPSC_CODE: 60
+
+MFR_NAME_SKIP_VALUES:
+  - 'GENERIC - OTHER'
+  - 'GENERIC CONDUIT'
+  - 'GENERIC CONDUIT FITTINGS'
+  - 'GENERIC CONDUIT/CONDUIT FITTINGS'
+  - 'GENERIC LIGHTING'
+  - 'GENERIC WIRE'

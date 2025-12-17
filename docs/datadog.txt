@@ -1,0 +1,83 @@
+You’ll just add a Datadog sidecar to your Azure Web App and point your logger at the App Service log path the sidecar tails.
+==================================================================================================================================
+### Add the Datadog sidecar (no compose needed)
+==================================================================================================================================
+Name: datadog
+
+Type: Sidecar
+
+Image source: Docker Hub (or Other container registries)
+
+Image type: Public
+
+Registry server URL: index.docker.io (Azure often shows it as https://index.docker.io, but the value is index.docker.io).
+
+Image and tag: datadog/serverless-init:latest (1.7.7)
+
+Port: 8126 (Datadog’s sidecar listens for APM on 8126; required by their App Service sidecar guide).
+
+Startup command: Leave blank (use the image default).
+
+Enable Allow access to all app settings so the sidecar reads them
+
+Add volume mounts
+- Volume sub path: home/LogFiles
+- Container mount path: /home/LogFiles
+- Make it read-only
+
+==================================================================================================================================
+### App Settings (Environment variables)
+==================================================================================================================================
+Set these on the app (and enable “Allow access to all app settings” so the sidecar can read them):
+
+DD_API_KEY = <your key>  # Provide reference from key vault
+
+DD_SITE = us5.datadoghq.com
+
+DD_SERVICE = ai-procurement-platform-dev_api (whatever you want)
+
+DD_ENV = prod/dev
+
+DD_SERVERLESS_LOG_PATH = /home/LogFiles/*.log
+
+(Optional, recommended if you might scale out) DD_AAS_INSTANCE_LOGGING_ENABLED = true
+
+This adds /home/LogFiles/app-${COMPUTERNAME}.log to the tailed paths to avoid duplicate logs across instances.
+And keep your FastAPI logger writing to /home/LogFiles/app-${COMPUTERNAME}.log so the sidecar tails it.
+
+==================================================================================================================================
+Tunables via app env (no code changes)
+==================================================================================================================================
+DD_LOG_DIR (default /home/LogFiles)
+
+DD_LOG_MAX_BYTES (default 1000000)
+
+DD_LOG_BACKUPS (default 2)
+
+DD_LOG_RETENTION_HOURS (default 24)
+
+DD_LOG_PRUNE_ON_START (default true)
+
+==================================================================================================================================
+Checks in Webapp to make sure everything is correct
+==================================================================================================================================
+1. Is /home/LogFiles real & writable?
+Run these commands and check
+>> ls -ld /home /home/LogFiles
+>> id
+>> test -d /home/LogFiles && echo "exists"
+>> test -w /home/LogFiles && echo "writable"
+>> touch /home/LogFiles/dd-write-test.log && echo "touched"
+If touch fails → permissions / mount issue (see “Fixes” below).
+
+2. App setting enabled?
+
+In Azure Portal → your Web App → Configuration → General settings:
+App Service Storage must be On.
+(Equivalent app setting: WEBSITES_ENABLE_APP_SERVICE_STORAGE=true.)
+
+3. Are you writing to a different path in dev?
+
+Check env overrides:
+>> printenv | egrep 'DD_LOG_DIR|DD_LOG_MAX_BYTES|DD_LOG_BACKUPS|DD_LOG_RETENTION_HOURS|COMPUTERNAME|WEBSITE_INSTANCE_ID'
+Make sure DD_LOG_DIR isn’t set to something else in dev.

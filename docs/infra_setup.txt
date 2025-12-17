@@ -1,0 +1,27 @@
+Language Studio
+===============
+- Create/Use a container in storage account.
+- It should have a storage account linked and have Blob data contributor role assigned in account
+- Developer should have same permission at container level and storage account level for creating a project and train a model
+- After training, deploy the model for both dev and prod at the same time
+    - Append 'dev' at the end, for dev purpose
+    - Append 'prod' at the end, for prod purpose
+    - If not deployed for both, model will expire after some time and can't be replicated later
+
+Web Job for Indexer:
+===================
+- Defined under jobs folder in app code
+- Runs daily at scheduled time and writes logs to persitant directory.
+- Job code can be updated from container deployment
+- CRON format for Azure WebJobs is
+{second} {minute} {hour} {day} {month} {day-of-week}
+- Go to triggered folder and Zip the particular job folder
+>> cd .\jobs\triggered\
+>> Compress-Archive -Path .\ReindexDaily\* -DestinationPath .\ReindexDaily.zip -Force
+>> Compress-Archive -Path .\ResetStalledJobs\* -DestinationPath .\ResetStalledJobs.zip -F
+>> Compress-Archive -Path .\RestartApp\* -DestinationPath .\RestartApp.zip -F
+>> Compress-Archive -Path .\FinetuneLLM\* -DestinationPath .\FinetuneLLM.zip -F
+>> Compress-Archive -Path .\ReReviewRCAI\* -DestinationPath .\ReReviewRCAI.zip -F
+>> Compress-Archive -Path .\TextClassifierTrainer\* -DestinationPath .\TextClassifierTrainer.zip -F
+>> Compress-Archive -Path .\ConfigChecker\* -DestinationPath .\ConfigChecker.zip -F
+>> Compress-Archive -Path .\ResetAIJobs\* -DestinationPath .\ResetAIJobs.zip -F

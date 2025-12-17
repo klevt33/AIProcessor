@@ -1,0 +1,1 @@
+customer text classifier - https://azure.microsoft.com/en-us/pricing/details/cognitive-services/language-service/

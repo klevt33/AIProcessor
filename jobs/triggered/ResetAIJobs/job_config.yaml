@@ -1,0 +1,6 @@
+# The line statuses in SDP that should be retried
+LINE_STATUSES:
+  - AI
+  - AI-PENDING
+# How many hours to wait before retrying an invoice
+DELAY_IN_HOURS: 24

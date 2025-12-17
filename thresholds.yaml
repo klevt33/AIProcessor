@@ -1,0 +1,50 @@
+CLASSIFICATION:
+  DESCRIPTION_CLASSIFIER: 95
+
+COMPLETE_MATCH:
+  COMPLETE_MATCH:
+    manufacturer_name: 70
+    part_number: 71
+    unspsc: 70
+
+SEMANTIC_SEARCH:
+  SEMANTIC_SEARCH:
+    manufacturer_name: 75
+    part_number: 75
+    unspsc: 75
+
+FINETUNED_LLM:
+  FINETUNED_LLM:
+    manufacturer_name: 95
+    part_number: 100
+    unspsc: 95
+
+EXTRACTION_WITH_LLM_AND_WEBSEARCH:
+  AZURE_AI_AGENT_WITH_BING_SEARCH:
+    manufacturer_name: 73
+    part_number: 74
+    unspsc: 70
+#
+# COMPLETE_MATCH:
+#   COMPLETE_MATCH:
+#     manufacturer_name: 101
+#     part_number: 101
+#     unspsc: 101
+
+# SEMANTIC_SEARCH:
+#   SEMANTIC_SEARCH:
+#     manufacturer_name: 101
+#     part_number: 101
+#     unspsc: 101
+
+# FINETUNED_LLM:
+#   FINETUNED_LLM:
+#     manufacturer_name: 101
+#     part_number: 101
+#     unspsc: 101
+
+# EXTRACTION_WITH_LLM_AND_WEBSEARCH:
+#   AZURE_AI_AGENT_WITH_BING_SEARCH:
+#     manufacturer_name: 101
+#     part_number: 101
+#     unspsc: 101

@@ -1,0 +1,31 @@
+__pycache__/
+*/__pycache__/
+*/*/__pycache__/
+.vscode/
+.idea/
+tests/data/
+training/costs.txt
+training/text_classifier/distilbert-base-uncased-model-all-classifier
+training/text_classifier/distilbert-base-uncased-model-all-classifier-tokenizer
+training/text_classifier/distilbert-base-uncased-model-classifier
+training/text_classifier/distilbert-base-uncased-model-classifier-tokenizer
+training/text_classifier/results
+docker-compose.debug.yml
+docker-compose.yml
+.github/copilot-instructions.md
+tests/*.xlsx
+tests/*.csv
+app_debug.log
+env/temp.env.yaml
+jobs/triggered/*.zip
+app_debug*.log
+precommit_output.txt
+.mypy_cache/
+
+# ---- Environment / secrets ----
+.env
+*.env
+env/
+
+# ---- Logs ----
+*.log

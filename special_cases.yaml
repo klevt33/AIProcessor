@@ -1,0 +1,73 @@
+CASES:
+
+  CASE_0: # Default pipeline
+    NAME: DEFAULT PIPELINE
+
+    STAGES:
+      CLASSIFICATION:
+        - DESCRIPTION_CLASSIFIER
+        - LOT_CLASSIFIER
+
+      SEMANTIC_SEARCH:
+        - SEMANTIC_SEARCH
+
+      COMPLETE_MATCH:
+        - COMPLETE_MATCH
+
+      CONTEXT_VALIDATOR:
+        - CONTEXT_VALIDATOR
+
+      FINETUNED_LLM:
+        - FINETUNED_LLM
+
+      EXTRACTION_WITH_LLM_AND_WEBSEARCH:
+        - AZURE_AI_AGENT_WITH_BING_SEARCH
+
+    OUTPUT_FIELDS:
+      - part_number
+      - manufacturer_name
+      - unspsc
+
+  CASE_1: # Generic items pipeline
+    NAME: GENERIC PIPELINE
+    INPUT_COLUMN: CTGY_ID
+
+    INPUT_VALUES:
+      - '1.2'
+    # INPUT_COLUMN: CLN_MFR_AI_NM
+
+    # INPUT_VALUES:
+    #   - 'GENERIC - OTHER'
+    #   - 'GENERIC CONDUIT'
+    #   - 'GENERIC CONDUIT FITTINGS'
+    #   - 'GENERIC CONDUIT/CONDUIT FITTINGS'
+    #   - 'GENERIC LIGHTING'
+    #   - 'GENERIC WIRE'
+
+    SKIP_STAGES:
+      CLASSIFICATION: []
+      COMPLETE_MATCH:
+        - COMPLETE_MATCH
+
+    OUTPUT_FIELDS:
+      - manufacturer_name
+      - unspsc
+
+  CASE_2: # LOT items pipeline
+    NAME: RPA LOT PIPELINE
+    INPUT_COLUMN: CTGY_ID
+
+    INPUT_VALUES:
+      - '1.1'
+
+    SKIP_STAGES:
+      CLASSIFICATION: []
+      CONTEXT_VALIDATOR:
+        - CONTEXT_VALIDATOR
+      FINETUNED_LLM:
+        - FINETUNED_LLM
+      EXTRACTION_WITH_LLM_AND_WEBSEARCH:
+        - AZURE_AI_AGENT_WITH_BING_SEARCH
+
+    OUTPUT_FIELDS:
+      - manufacturer_name
