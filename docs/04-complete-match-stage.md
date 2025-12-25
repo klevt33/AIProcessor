@@ -1,7 +1,7 @@
 # COMPLETE_MATCH Stage - Exact Matching from Database
 
-**Last Updated:** 2025-12-17  
-**Audience:** Business Analysts, QA Professionals  
+**Last Updated:** 2025-12-19
+**Author:** Kirill Levtov
 **Related:** [Solution Overview](01-solution-overview.md) | [CONTEXT_VALIDATOR Stage](05-context-validator-stage.md) | [SEMANTIC_SEARCH Stage](06-semantic-search-stage.md)
 
 ## Overview
@@ -14,20 +14,47 @@ This stage is typically the third extraction stage in the pipeline (after CLASSI
 
 ### Exact Matching
 The stage searches for exact text matches of:
-- **Part Numbers**: Alphanumeric codes like "T B 425", "LT50", "39131711"
+- **Part Numbers**: Alphanumeric codes like "TB425", "LT50", "39131711"
 - **Manufacturer Names**: Company names like "THOMAS & BETTS", "ABB", "EATON"
 
 Unlike semantic search which understands meaning, exact matching requires the text to appear in the description.
 
-### Part Number Extraction
-The stage uses pattern matching to identify potential part numbers in the description:
-- Alphanumeric sequences (letters + numbers)
-- Minimum length requirements
-- Special character handling (-, /, .)
-- Context-aware extraction (avoids dates, measurements)
+### Part Number Logic
 
-**Example:**
-- "T&B 425 1-1/4 INSULATING SLEEVE" → Extracts: ["T B 425", "425", "1-1/4"]
+The stage employs a sophisticated engine (`PartNumberExtractor`) to identify, validate, and score part numbers. This process goes beyond simple regex matching to ensure robustness against formatting variations and ambiguity.
+
+#### 1. Extraction & Search Variations
+The system uses multiple regex "rulesets" to find alphanumeric sequences. To maximize database recall, it generates multiple query variations for every candidate found:
+- **Raw Match**: The exact sequence found in the text (e.g., "CAT-6").
+- **Normalized Match**: The sequence with separators removed (e.g., "CAT6").
+- **Dot Handling**: Variations specific to dot separators (e.g., "1.25" vs "125").
+
+This ensures that if the invoice says "CAT-6" but the database lists "CAT6" (or vice versa), a match is found.
+
+#### 2. Unique Independent Part Number Candidates (UIPNC)
+The **UIPNC** is a critical concept used to calculate ambiguity penalties in the confidence score.
+- **Definition**: A UIPNC is a "maximal" part number candidate that is not a substring of another candidate in the same description.
+- **Purpose**: To distinguish between *true ambiguity* (two different parts) and *overlap ambiguity* (one part contained inside another).
+- **Logic**:
+  - The system extracts all valid candidates.
+  - It sorts them by length (descending).
+  - It accepts a candidate only if it is not a substring of an already accepted UIPNC.
+
+**Example**:
+- Input: "TYPE-12345"
+- **Extracted Variants**: "TYPE-12345", "TYPE12345", "12345".
+- **UIPNC Result**: Only **["TYPE12345"]**.
+- *Why*: "12345" is a substring of the longer match "TYPE12345". Although "12345" is still used for database lookups (to find the product), it is excluded from the UIPNC list. This ensures the confidence score is not penalized for "finding multiple parts" when there is actually only one specific item.
+
+#### 3. Effective Length Calculation
+Confidence scoring uses "Effective Length" rather than raw character count to assess the quality of a match. High effective length implies a specific, non-generic part number.
+- **Formula**:
+  `Effective Length = Raw Length - Penalties + Bonuses`
+- **Penalties**:
+  - **Separators**: Characters like `-`, `/`, and `.` do not contribute to the effective length. (e.g., "12-34" has a raw length of 5 but an effective length of 4, treating it equally to "1234").
+  - **Repetition**: Excessive repeating characters (e.g., "11111") trigger penalties, reducing the effective length to reflect that repetitive sequences are often generic.
+- **Bonuses**:
+  - **Complexity**: Presence of multiple capital letters adds points, as alphanumeric combinations are statistically more unique than pure numbers.
 
 ### Manufacturer Name Detection
 The stage maintains a dictionary of known manufacturer names and their variants:
@@ -37,18 +64,38 @@ The stage maintains a dictionary of known manufacturer names and their variants:
 
 The stage searches the description for any variant and maps it to the clean name.
 
+### False Positive Manufacturer Prevention
+The system implements a safeguard to prevent unfair penalties when a description contains brand names that are legitimately part of the product's specification (e.g., "Replaces GE", "Fits Square D").
+
+**Logic:**
+Before treating a found manufacturer name as a **conflict** during scoring, the system checks if that name appears as a whole word within the **Database Item Description** of the matched part.
+- **If Found in DB Description**: The name is flagged as a "False Positive" and ignored. It does not trigger a conflict penalty.
+- **If Not Found**: The name is treated as a generic competitor and penalizes the confidence score.
+
+**Example:**
+- **Input**: "PHILIPS F32T8/TL841 REPLACES GE F32T8/SP41"
+- **Match**: Manufacturer="PHILIPS", Part="F32T8/TL841".
+- **Found in Text**: "PHILIPS" (Match) and "GE" (Potential Conflict).
+- **Check**: Does "GE" appear in the official PHILIPS database description?
+  - *Scenario A (DB Desc: "32W T8 4100K LAMP")*: "GE" is NOT in description. -> **Penalty Applied**.
+  - *Scenario B (DB Desc: "32W T8 LAMP REPLACES GE/SYLVANIA")*: "GE" IS in description. -> **No Penalty** (False Positive).
+
 ### Database Querying
-Two data sources available:
-- **SQL Database**: Direct queries to product tables
-- **Azure AI Search**: Hybrid search with fallback
-- Configurable via `exact_match_source` setting
+Two data sources are available, with **Azure AI Search** being the default and recommended source for performance:
+
+- **Azure AI Search (Default)**: Uses exact filtering logic to identify records where the `MfrPartNum` matches the extracted candidates. It does **not** use vector/hybrid search in this stage; it relies on strict filtering to ensure exact matches.
+- **SQL Database**: Executes direct SQL queries against product tables.
+- **Configuration**: Controlled via the `exact_match_source` setting.
+
+**Fallback Mechanism:**
+The system implements a robust fallback strategy. If the primary source (e.g., Azure AI Search) fails due to connection issues or errors, the system automatically retries the query against the secondary source (e.g., SQL Database), ensuring high availability.
 
 ### Confidence Scoring
-Multi-factor scoring system that considers:
-- **Part Number Match**: Length, quality, detection accuracy
-- **Manufacturer Match**: Exact vs. partial, relationship type (direct, parent, child)
-- **UNSPSC Match**: Data source reliability
-- **Description Similarity**: Cosine similarity between embeddings
+A multi-factor scoring system determines the best match quality:
+- **Part Number Match**: Derived from **Effective Length** (rewarding complexity, penalizing separators/repetition) and **Ambiguity** (penalizing if multiple independent part number candidates are found).
+- **Manufacturer Match**: Evaluates whether the manufacturer is explicitly found in the description, handling aliases (e.g., "T&B") and checking for conflicts with other brand names.
+- **UNSPSC Match**: Base score derived largely from the reliability of the data source.
+- **Description Similarity**: Uses vector embeddings to calculate the cosine similarity between the input text and the database item description.
 
 ### Manufacturer Relationship Types
 The stage determines the relationship between manufacturers:
@@ -66,10 +113,11 @@ If no part number match found:
 - Lower confidence than full match
 
 ### Verification Flag
-Indicates if the matched product is verified:
-- Set to true if match meets high confidence thresholds
-- Requires strong part number and manufacturer match
-- Used to determine final invoice line status
+The `is_verified_flag` indicates a definitive match against a master data source. It is set to 'Y' (True) only when **all** of the following conditions are met:
+
+1.  **Trusted Data Source**: The product was matched against a verified dataset (**IDEA** or **TRD_SVC**). Matches against the invoice history pipeline do not qualify.
+2.  **Explicit Match**: Both Manufacturer Name and Part Number were explicitly identified in the description and matched the database.
+3.  **Uniqueness**: Exactly one unique combination of Manufacturer and Part Number was found. Ambiguous matches (multiple candidates) result in a flag of 'N'.
 
 
 
@@ -132,9 +180,25 @@ Core matching logic with manufacturer detection and part number extraction.
 
 **Manufacturer Processing:**
 
-- `read_manufacturer_data(sdp)` - Loads manufacturer mapping
-  - Reads from database
-  - Returns dictionary: {UncleanName: {CleanName, ParentCleanName, BeginningOnlyFlag}}
+- `read_manufacturer_data(sdp)` - Loads and caches manufacturer mapping logic.
+  - **Business Logic**:
+    - Queries the SQL database for all active manufacturer mapping records.
+    - Constructs a high-performance lookup dictionary to normalize manufacturer aliases (e.g., "T&B" -> "THOMAS & BETTS").
+    - Handles parent/child relationships (e.g., mapping "THOMAS & BETTS" to parent "ABB").
+    - Applies "False Positive" prevention logic: Records with `BeginningOnlyFlag=True` are only considered valid matches if found at the very start of the description.
+
+  - **Data Structure**:
+    - Returns a `SpecialCharIgnoringDict` (custom dictionary that ignores special characters in keys).
+    - **Key**: `UncleanName` (The alias or variant found in text).
+    - **Value**: A dictionary containing:
+      - `CleanName`: The standardized official manufacturer name.
+      - `ParentCleanName`: The standardized name of the parent company (if applicable).
+      - `BeginningOnlyFlag`: Boolean indicating if the alias is position-sensitive.
+
+  - **Caching**:
+    - Implements an internal module-level cache (`_manufacturer_data_cache`) with a configurable Time-To-Live (TTL, default 1 hour).
+    - Uses a threading lock to ensure only one thread queries the database for cache population, even under high concurrency.
+    - This optimized caching strategy means the database is queried only once per hour, regardless of the number of invoice lines processed.
 
 - `find_manufacturers_in_description(manufacturer_dict, description)` - Finds manufacturers
   - Searches description for manufacturer variants
@@ -229,8 +293,9 @@ Azure AI Search queries for parts data.
 **Key Methods:**
 
 - `get_parts_data_from_index(part_numbers)` - Searches index for parts
-  - Uses hybrid search (vector + keyword)
-  - Returns matching products
+  - Uses **exact filtering** on `MfrPartNum` (or specific fields) to identify candidates matching the extracted part numbers.
+  - Retrieves product details including the `ItemDescription_vector` (embeddings).
+  - These embeddings are used subsequently to calculate **cosine similarity** between the input description and the matched product description, which is a key input for confidence scoring.
 
 ## Configuration
 
@@ -249,14 +314,14 @@ COMPLETE_MATCH:
       uipnc_match_bonus: 10
       uipnc_penalty_unit: 5
       min_threshold: 50
-    
+
     MANUFACTURER_CONFIDENCE:
       base_weight: 40
       part_weight: 20
       weight: 20
       desc_sim_weight: 10
       min_threshold: 60
-    
+
     UNSPSC_CONFIDENCE:
       base_weight: 30
       part_weight: 20
@@ -328,7 +393,7 @@ graph TD
     G --> M{Manufacturer Found?}
     M -->|Yes| N[Return Manufacturer Only]
     M -->|No| O[Return No Match]
-    
+
     style A fill:#e1f5ff
     style C fill:#fff4e1
     style D fill:#f3e5f5
@@ -346,22 +411,26 @@ graph TD
 
 **2. Part Number Extraction**
 - Apply regex patterns to find alphanumeric sequences
-- Filter by minimum length (typically 3-4 characters)
+- Filter by minimum length (4 characters)
 - Remove separators (-, /, .) for matching
 - Identify UIPNCs (Unique Independent Part Number Candidates)
 
 **Example:**
 ```
-Description: "T&B 425 1-1/4 INSULATING SLEEVE"
-Extracted: ["T B 425", "425", "1-1/4"]
-UIPNCs: ["425"] (most likely actual part number)
+Description: "T&B 54855 1-1/4 INSULATING SLEEVE"
+Extracted Candidates: ["54855"]
+UIPNCs: ["54855"]
 ```
+*Note: "1-1/4" is excluded because it matches a measurement pattern.*
 
 **3. Parts Data Fetching**
-- Query primary data source (database or azure_search)
-- Search for products with matching part numbers
-- If primary fails, try fallback source
-- Return DataFrame with product information
+- **Query Generation**: To maximize recall against inconsistent database formatting, the system generates multiple query variations for every extracted part number candidate:
+  - **Raw Match**: The exact sequence found in the text (e.g., "CAT-6").
+  - **Normalized Match**: The sequence with separators removed (e.g., "CAT6").
+  - **Dot Handling**: Variations handling decimal points (e.g., queries for both "10.25" and "1025" to catch formatting differences).
+- **Execution**: Queries the primary data source (default: Azure AI Search) using the full list of variations.
+- **Fallback**: If the primary source fails (connection error/timeout), the system automatically retries the query against the secondary source (SQL Database).
+- **Result**: Returns a unified DataFrame containing all products that matched *any* of the generated variations.
 
 **4. Manufacturer Detection**
 - Load manufacturer mapping dictionary
@@ -376,22 +445,30 @@ Found: {"THOMAS & BETTS": "T&B"}
 ```
 
 **5. Data Enrichment**
-- Add CleanName and UncleanName columns
-- Determine MfrNameMatchType (DIRECT, PARENT, CHILD, etc.)
-- Calculate DescriptionSimilarity using embeddings
-- Keep highest similarity row per ItemID
+- **Clean Name Mapping**: Maps the raw `MfrName` from the database to the standardized `CleanName` and `UncleanName` using the cached manufacturer dictionary.
+- **Match Type Classification**: Determines the `MfrNameMatchType` to categorize the clarity of the manufacturer match:
+  - **SINGLE_MATCH**: The part is linked to a manufacturer found in the text, and *all* other manufacturers found in the text are equivalent (no conflicts).
+  - **MULTIPLE_MATCHES_ONE_VALID**: The part is linked to a manufacturer, but the text *also* contains unrelated/conflicting manufacturer names.
+  - **NO_VALID_MATCHES**: The part could not be linked to any specific manufacturer found in the text.
+  - **NO_MANUFACTURERS_FOUND**: No known manufacturer names were identified in the text.
+- **Similarity Calculation**: Calculates `DescriptionSimilarity` (cosine similarity) between the input description's embedding and the database item's embedding.
+- **Deduplication**: Filters to keep only the highest similarity row per unique `ItemID`.
 
 **6. Confidence Score Calculation**
 
 **Part Number Confidence:**
-```
+```text
 score = base_weight (30)
-      + length_quality_points (0-25)
-      + manufacturer_match_points (0-15)
-      + description_similarity_points (0-10)
-      + uipnc_bonus (10 if UIPNC)
-      - uipnc_penalty (5 * num_other_uipncs)
+      + [points_from_effective_length (0-100) * weight (0.25)]
+      + [manufacturer_match_points * manufacturer_weight]
+      + [description_similarity_points * desc_sim_weight]
+
+Where points_from_effective_length includes:
+  + Base points for length
+  + UIPNC Bonus (if the part is a Unique Independent Candidate)
+  - Ambiguity Penalty (based on ratio of total UIPNC lengths to this part's length)
 ```
+*Note: The ambiguity penalty is calculated as `(Sum of all UIPNC lengths / Matched Part Length) - 1`. This penalizes matches proportionally when the description contains multiple distinct part number candidates.*
 
 **Manufacturer Confidence:**
 ```
@@ -411,155 +488,133 @@ score = base_weight (30)
 
 **7. Sequential Filtering**
 
-**Filter 1: Manufacturer Match**
-- Keep only rows where manufacturer in description matches product manufacturer
-- Remove non-matching manufacturers
+The system applies a series of filters to refine the candidate list:
 
-**Filter 2: Description Similarity**
-- Remove rows below similarity threshold (typically 0.7)
-- Keep most similar matches
+**Filter 1: Explicit Manufacturer Priority (`filter_by_unclean_name`)**
+- Prioritizes matches where the manufacturer name was explicitly found in the description.
+- **Logic**: For a given part number, if *any* candidate record has an explicitly matched manufacturer (`UncleanName` is populated), all other records for that same part number *without* an explicit manufacturer match are removed.
 
-**Filter 3: Part Number Substring**
-- If part number A is substring of part number B, remove A
-- Prefer longer, more specific part numbers
-- Example: Remove "425" if "T B 425" exists
+**Filter 2: Description Similarity Cleanup (`filter_by_description_similarity`)**
+- A conditional filter that removes low-quality matches only when high-quality matches exist.
+- **Logic**: If any candidate has a description similarity score above the `high_threshold` (e.g., 0.95), the system removes candidates in the same group that fall below the `low_threshold` (e.g., 0.8). This ensures that "noise" matches don't dilute the confidence of strong matches.
 
-**Filter 4: Confidence Thresholds**
-- Remove rows below minimum confidence thresholds
-- Part number: ≥ 50
-- Manufacturer: ≥ 60
-- UNSPSC: ≥ 50
+**Filter 3: Part Number Substring (`filter_by_part_number_substring`)**
+- Removes ambiguous substring matches within the same manufacturer group.
+- **Logic**: If Part A ("54855") is a substring of Part B ("54855B"), and both are candidates for the same manufacturer, Part A is removed. The system prefers the longer, more specific part number match.
 
-**8. Verification Flag**
-- Set IsVerified = true if:
-  - Part number confidence ≥ 80
-  - Manufacturer confidence ≥ 80
-  - Description similarity ≥ 0.85
-- Otherwise IsVerified = false
+**Filter 4: Confidence-Based Filtering (`filter_and_adjust_by_confidence`)**
+- Applies relative and absolute confidence checks.
+- **Step A (Relative)**: Sorts candidates by score. Removes any candidate whose score is significantly lower than the top score (controlled by `top_score_relative_filter_factor`).
+- **Step B (Adjustment)**: Adjusts the top candidate's score based on the strength of competing candidates (e.g., penalties for ambiguity).
+- **Step C (Absolute)**: Checks if the top candidate meets the minimum confidence threshold for at least one field. If not, the match is discarded.
+
+**8. Verification Flag Logic**
+The `is_verified_flag` is not based on confidence scores. It is a strict data integrity check.
+- **Set to 'Y' (True) ONLY if:**
+  1.  **Explicit Manufacturer**: The manufacturer was explicitly found in the description (`UncleanName` is populated).
+  2.  **Unique Match**: Exactly one candidate record remains after filtering.
+  3.  **Trusted Source**: The candidate record comes from a verified source (`IDEA` or `TRD_SVC`).
+- Otherwise, the flag is set to 'N'.
 
 **9. Score Capping**
-- Cap all scores at 100
-- Apply final adjustments
-- Return top-scoring record
+- Applies specific business rules to cap scores for edge cases.
+- **Implicit Match Cap**: If a match was found based on Part Number alone (without the Manufacturer Name appearing in the text), the Manufacturer Confidence Score is capped (default: 90) to reflect the implicit nature of the match.
 
 **10. Fallback to Manufacturer-Only**
-- If no part match found but manufacturers detected
-- Select best manufacturer from those found
-- Return manufacturer name with confidence
-- No part number or UNSPSC
+- If the filtering process results in no part number matches (empty results):
+- The system checks if any manufacturers were identified in the description.
+- If yes, it selects the best manufacturer candidate.
+- Returns the Manufacturer Name with a calculated confidence score.
+- **Note**: Part Number and UNSPSC confidence scores are explicitly set to 0.
 
 ### Confidence Calculation Examples
 
-**Example 1: Strong Match**
+**Example 1: Strong Match (No Ambiguity)**
 
-Input:
-- Part number "T B 425" found in description
-- Part number "T B 425" found in database
-- Manufacturer "THOMAS & BETTS" found in both
-- Description similarity: 0.92
-- Part number is a UIPNC
-- Only 1 UIPNC in description
+**Input:**
+- Description: "T&B 54855 1-1/4 INSULATING SLEEVE"
+- Extracted Part Number: "54855" (Length: 5)
+- Found Manufacturer: "T&B" (mapped to "THOMAS & BETTS")
+- **UIPNCs**: ["54855"] (Only one candidate found)
+- **Source**: IDEA (Trusted)
 
-Part Number Confidence:
-```
-30 (base)
-+ 25 (full length match)
-+ 15 (manufacturer match)
-+ 9 (similarity 0.92 * 10)
-+ 10 (UIPNC bonus)
-- 0 (no other UIPNCs)
-= 89
-```
+**Part Number Confidence Calculation:**
+1.  **Effective Length Points**: 45 points (for 5 characters).
+2.  **UIPNC Bonus**: +10 points (It is a recognized candidate).
+3.  **Ambiguity Penalty**: 0 points.
+    - *Logic*: (Sum of all UIPNC lengths / Target Length) - 1
+    - Calculation: (5 / 5) - 1 = 0.
+4.  **Final Adjustment**: Score is high due to lack of ambiguity.
 
-Manufacturer Confidence:
-```
-40 (base)
-+ 20 (part number match)
-+ 20 (DIRECT relationship)
-+ 9 (similarity 0.92 * 10)
-= 89
-```
+**Manufacturer Confidence Calculation:**
+1.  **Primary Match**: "THOMAS & BETTS" found explicitly.
+2.  **Conflicts**: None found.
+3.  **Score**: High base score (typically 90) + adjustments.
 
-UNSPSC Confidence:
-```
-30 (base)
-+ 20 (part number match)
-+ 20 (manufacturer match)
-+ 9 (similarity 0.92 * 10)
-= 79
-```
+**Result:**
+- **IsVerified**: `True` (Unique explicit match from Trusted Source).
+- **Status**: High confidence on all fields.
 
-IsVerified: true (all scores ≥ 80, similarity ≥ 0.85)
+---
 
-**Example 2: Ambiguous Part Numbers**
+**Example 2: Ambiguous Match (Multiple Part Candidates)**
 
-Input:
-- Part numbers "425", "1-1/4", "T B 425" found in description
-- Part number "425" found in database
-- Manufacturer "THOMAS & BETTS" found in both
-- Description similarity: 0.85
-- Part number "425" is a UIPNC
-- 3 UIPNCs total in description
+**Input:**
+- Description: "EATON BR120 AND BR230 BREAKERS"
+- Extracted Part Number: "BR120" (Length: 5)
+- Found Manufacturer: "EATON"
+- **UIPNCs**: ["BR120", "BR230"] (Two distinct candidates)
 
-Part Number Confidence:
-```
-30 (base)
-+ 20 (partial length match)
-+ 15 (manufacturer match)
-+ 8 (similarity 0.85 * 10)
-+ 10 (UIPNC bonus)
-- 10 (2 other UIPNCs * 5)
-= 73
-```
+**Part Number Confidence Calculation:**
+1.  **Effective Length Points**: 45 points (for 5 characters).
+2.  **UIPNC Bonus**: +10 points.
+3.  **Ambiguity Penalty**: Applied because multiple candidates exist.
+    - *Logic*: (Sum of lengths / Target Length) - 1
+    - Sum of lengths = 5 ("BR120") + 5 ("BR230") = 10.
+    - Penalty Factor = (10 / 5) - 1 = 1.0.
+    - **Penalty**: 1.0 * Penalty Unit (e.g., 5) = -5 points.
+4.  **Impact**: The final confidence score is reduced to reflect that "BR120" is only one of the potential parts in the description.
 
-Manufacturer Confidence:
-```
-40 (base)
-+ 20 (part number match)
-+ 20 (DIRECT relationship)
-+ 8 (similarity 0.85 * 10)
-= 88
-```
+**Result:**
+- **IsVerified**: `False` (Likely fails uniqueness check if both parts match database records).
 
-IsVerified: false (part number < 80)
+---
 
-**Example 3: Parent Manufacturer**
+**Example 3: Parent/Child Manufacturer Relationship**
 
-Input:
-- Part number "LT50" found
-- Manufacturer "ABB" found in description
-- Product manufacturer "THOMAS & BETTS" (child of ABB)
-- Description similarity: 0.80
+**Input:**
+- Description: "ABB T&B 54855 CONNECTOR"
+- Database Record: Manufacturer="THOMAS & BETTS", Part="54855"
+- Found Manufacturers: "ABB" and "T&B"
 
-Manufacturer Confidence:
-```
-40 (base)
-+ 20 (part number match)
-+ 15 (PARENT relationship, not DIRECT)
-+ 8 (similarity 0.80 * 10)
-= 83
-```
+**Manufacturer Confidence Calculation:**
+1.  **Match**: "T&B" matches the database record ("THOMAS & BETTS").
+2.  **Conflict Check**: The system checks "ABB".
+    - Is "ABB" equivalent to "THOMAS & BETTS"? **Yes** (ABB is the Parent company).
+    - **Result**: "ABB" is **not** treated as a conflict.
+3.  **Score**: The score is calculated as if there were no conflicting manufacturers, resulting in high confidence.
 
-IsVerified: false (not DIRECT relationship)
+**Result:**
+- **IsVerified**: `True` (assuming "THOMAS & BETTS" is the unique explicit match found).
+- *Note: If "ABB" were an unrelated competitor (e.g., "EATON"), it would be treated as a conflict, significantly lowering the manufacturer confidence score.*
 
-### Manufacturer Relationship Scoring
+### Manufacturer Conflict Resolution
 
-The stage adjusts manufacturer confidence based on relationship type:
+The stage does not assign specific point values to different manufacturer relationships (e.g., Parent vs. Child). Instead, it uses relationship logic to distinguish between **valid context** and **conflicting manufacturers**.
 
-| Relationship | Points | Example |
-|--------------|--------|---------|
-| DIRECT | 20 | "THOMAS & BETTS" = "THOMAS & BETTS" |
-| PARENT | 15 | "ABB" is parent of "THOMAS & BETTS" |
-| CHILD | 10 | "THOMAS & BETTS" is child of "ABB" |
-| SIBLING | 5 | "THOMAS & BETTS" and "BALDOR" share parent "ABB" |
-| NOT_EQUIVALENT | 0 | No relationship |
+**Logic:**
+The system identifies all manufacturer names present in the invoice description. For a given database record being evaluated, it checks the relationship between the record's manufacturer and the other names found in the text.
 
-**Rationale:**
-- DIRECT match is strongest (exact same company)
-- PARENT match is strong (parent company owns product)
-- CHILD match is moderate (subsidiary makes product)
-- SIBLING match is weak (related but different companies)
-- NOT_EQUIVALENT is no match
+- **Equivalent Manufacturers (No Penalty):**
+  If a found name represents the same entity or a related corporate entity, it is **not** treated as a conflict. This prevents penalties when valid aliases or related brand names appear.
+  - **DIRECT**: Exact match (e.g., "THOMAS & BETTS" and "T&B").
+  - **PARENT**: Parent company (e.g., "ABB" owning "THOMAS & BETTS").
+  - **CHILD**: Subsidiary (e.g., "THOMAS & BETTS" owned by "ABB").
+  - **SIBLING**: Shared parent (e.g., "THOMAS & BETTS" and "BALDOR" under "ABB").
+
+- **Conflicting Manufacturers (Penalty Applied):**
+  - **NOT_EQUIVALENT**: If a found name has no relationship to the record's manufacturer (e.g., "EATON" appearing in a description for a "SQUARE D" part), it is treated as a **conflict**.
+  - **Impact**: The presence of conflicting manufacturers triggers specific penalties in the confidence score calculation, reducing the likelihood of a false positive match.
 
 ## Dependencies
 
@@ -603,254 +658,196 @@ The stage adjusts manufacturer confidence based on relationship type:
 
 ## Output Fields
 
-The stage returns the following fields:
+The stage returns a structured object containing the extracted data, confidence scores, and metadata used for verification.
 
 | Field | Type | Description | Example |
 |-------|------|-------------|---------|
-| `MfrName` | string | Clean manufacturer name | "THOMAS & BETTS" |
-| `ManufacturerNameConfidenceScore` | int | Confidence score (0-100) | 89 |
-| `MfrPartNum` | string | Manufacturer part number | "425" |
-| `PartNumberConfidenceScore` | int | Confidence score (0-100) | 89 |
-| `UNSPSC` | string | UNSPSC code (8 digits) | "39131711" |
-| `UNSPSCConfidenceScore` | int | Confidence score (0-100) | 79 |
-| `UPC` | string | UPC barcode (if available) | "78621000425" |
-| `AKPartNum` | string | AKS internal part number (if available) | "AK10433053" |
-| `IsVerified` | boolean | Whether match is verified | true |
-| `IsMfrClean` | boolean | Whether manufacturer name is clean | true |
-| `IsMfrDirect` | boolean | Whether manufacturer relationship is DIRECT | true |
-| `DescriptionSimilarity` | float | Cosine similarity (0-1) | 0.92 |
-| `matched_description` | string | Matched product description | "1-1/4 Inch Insuliner Sleeve..." |
-| `description` | string | Cleaned invoice description | "t b 425 1-1/4 insulating sleeve" |
+| `MfrName` | string | The standardized (Clean) manufacturer name. | "THOMAS & BETTS" |
+| `MfrPartNum` | string | The manufacturer part number found in the database. | "54855" |
+| `UNSPSC` | string | The UNSPSC classification code (8 digits). | "39131711" |
+| `UPC` | string | The UPC barcode (if available in the match). | "78621000425" |
+| `confidence_score` | object | Dictionary containing scores for `manufacturer_name`, `part_number`, and `unspsc`. | `{ "manufacturer_name": 90, ... }` |
+| `matched_description` | string | The official product description from the database (used by Context Validator). | "1-1/4 Inch Insuliner Sleeve" |
+| `item_source_name` | string | The source of the matched record (e.g., IDEA, TRD_SVC). Essential for verification. | "IDEA" |
+| `is_verified_flag` | boolean | Indicates if the match meets strict verification criteria (Trusted Source + Unique + Explicit). | `true` |
+| `is_mfr_direct_flag` | boolean | Indicates if the manufacturer found in text was an exact match vs. a parent/child alias. | `true` |
+| `DescriptionSimilarity` | float | The cosine similarity score (0-1) between input and matched descriptions. | 0.92 |
 
 **Manufacturer-Only Match Fields:**
-- Only `MfrName` and `ManufacturerNameConfidenceScore` returned
-- No part number, UNSPSC, or UPC
-- Lower confidence than full match
+- Returns `MfrName` and `ManufacturerNameConfidenceScore`.
+- **Note:** `PartNumberConfidenceScore` and `UNSPSCConfidenceScore` are explicitly set to 0.
+- The `ManufacturerNameConfidenceScore` can still be high (e.g., 90-100) if the manufacturer match is distinct and unambiguous, regardless of the missing part number.
 
 ## Examples
 
-### Example 1: Strong Exact Match
+### Example 1: Strong Exact Match (Database & Text Agreement)
 
 **Input:**
 ```
-Description: "T&B 425 1-1/4 INSULATING SLEEVE"
+Description: "SIEMENS SIE B240 BREAKER 40A 2P 120/240V 10K BL"
 ```
 
 **Processing:**
-
-1. **Part Number Extraction:**
-   - Extracted: ["T B 425", "425", "1-1/4"]
-   - UIPNCs: ["425"]
-
-2. **Database Query:**
-   - Found product with part number "425"
-   - Manufacturer: "THOMAS & BETTS"
-   - UNSPSC: "39131711"
-   - UPC: "78621000425"
-
-3. **Manufacturer Detection:**
-   - Found "T&B" in description
-   - Mapped to "THOMAS & BETTS"
-
-4. **Confidence Calculation:**
-   - Part Number: 89 (strong match, UIPNC, no ambiguity)
-   - Manufacturer: 89 (DIRECT match, high similarity)
-   - UNSPSC: 79 (good match)
-
-5. **Verification:**
-   - IsVerified: true (all criteria met)
+1.  **Part Number Extraction:**
+    - Candidates: ["B240"].
+2.  **Database Query:**
+    - Match Found: `MfrPartNum="B240"`, `MfrName="SIEMENS"`.
+    - Source: `TRD_SVC` (Trusted).
+3.  **Manufacturer Detection:**
+    - Found "SIEMENS" in description -> Maps to "SIEMENS" (DIRECT match).
+4.  **Confidence Calculation:**
+    - **Part Number**: 100 (Strong match, confirmed by Mfr presence).
+    - **Manufacturer**: 100 (Direct match, no conflicts).
+    - **UNSPSC**: 100 (Derived from trusted source).
+5.  **Verification:**
+    - **IsVerified**: `true` (Unique match + Trusted Source + Explicit Mfr).
 
 **Output:**
 ```json
 {
-  "MfrName": "THOMAS & BETTS",
-  "ManufacturerNameConfidenceScore": 89,
-  "MfrPartNum": "425",
-  "PartNumberConfidenceScore": 89,
-  "UNSPSC": "39131711",
-  "UNSPSCConfidenceScore": 79,
-  "UPC": "78621000425",
+  "MfrName": "SIEMENS",
+  "ManufacturerNameConfidenceScore": 100,
+  "MfrPartNum": "B240",
+  "PartNumberConfidenceScore": 100,
+  "UNSPSC": "39121616",
+  "UNSPSCConfidenceScore": 100,
+  "UPC": "783643263574",
   "IsVerified": true,
   "IsMfrClean": true,
-  "IsMfrDirect": true,
-  "DescriptionSimilarity": 0.92,
-  "matched_description": "1-1/4 Inch Insuliner Sleeve, Nylon for Use with Rigid/IMC/EMT Conduit",
-  "description": "t b 425 1-1/4 insulating sleeve"
+  "matched_description": "SIEM5 B240 2P 40A CKT BRKR",
+  "description": "siemens sie b240 breaker 40a 2p 120/240v 10k bl"
 }
 ```
 
-### Example 2: Manufacturer-Only Match (No Part Number)
+### Example 2: Manufacturer-Only Match (No Part Match)
 
 **Input:**
 ```
-Description: "THOMAS & BETTS ELECTRICAL SUPPLIES"
+Description: "THOMAS AND BETTS T&B 425 1-1/4 INSULATING SLEEVE"
 ```
 
 **Processing:**
-
-1. **Part Number Extraction:**
-   - No valid part numbers found
-
-2. **Database Query:**
-   - No products found (no part numbers to search)
-
-3. **Manufacturer Detection:**
-   - Found "THOMAS & BETTS" in description
-
-4. **Fallback to Manufacturer-Only:**
-   - Return manufacturer with confidence
+1.  **Part Number Extraction:**
+    - Candidates: ["425"] (May be filtered if logic requires >=4 chars, or no DB match found for "425" under T&B).
+2.  **Database Query:**
+    - No exact part number match found for "425" linked to T&B in this context.
+3.  **Manufacturer Detection:**
+    - Found "THOMAS AND BETTS" and "T&B".
+    - Both map to "THOMAS & BETTS".
+4.  **Fallback to Manufacturer-Only:**
+    - **Manufacturer**: 100 (Strong explicit match).
+    - **Part/UNSPSC**: 0 (No product-level match).
 
 **Output:**
 ```json
 {
   "MfrName": "THOMAS & BETTS",
-  "ManufacturerNameConfidenceScore": 75,
+  "ManufacturerNameConfidenceScore": 100,
+  "MfrPartNum": null,
+  "PartNumberConfidenceScore": 0,
+  "UNSPSC": null,
+  "UNSPSCConfidenceScore": 0,
   "IsVerified": false,
   "IsMfrClean": true,
-  "IsMfrDirect": true,
-  "description": "thomas betts electrical supplies"
+  "description": "thomas and betts t b 425 1-1/4 insulating sleeve"
 }
 ```
 
-### Example 3: Parent Manufacturer Relationship
+### Example 3: Contextual Invalidation (Lot/Kit)
 
 **Input:**
 ```
-Description: "ABB LT50 LIQUIDTIGHT CONNECTOR"
+Description: "ORBIT ORB SSB-4-A134 2417755 ASSEMBLY - SW1: SSB-T5 LVBS-4-134"
 ```
 
 **Processing:**
+1.  **Part Number Extraction:**
+    - Candidates: ["SSB-4-A134", "SSB-T5", "LVBS-4-134", "2417755"].
+2.  **Database Query:**
+    - Found Match for "SSBT5" -> `MfrName="ORBIT INDUSTRIES"`.
+    - **Matched Item**: "ORBT SSB-T5 TELESCOPING BRACKET".
+3.  **Manufacturer Detection:**
+    - Found "ORBIT" -> Maps to "ORBIT INDUSTRIES" (DIRECT).
+4.  **Confidence Calculation:**
+    - Scores are high (Mfr: 100, Part: 100).
+5.  **Context Validation (Next Stage):**
+    - The `CONTEXT_VALIDATOR` stage reviews this match.
+    - **Verdict**: *Invalid*. The invoice describes an "ASSEMBLY" containing the bracket, but the match is just the component bracket.
+    - **Result**: The high-confidence match is **invalidated** later in the pipeline.
 
-1. **Part Number Extraction:**
-   - Extracted: ["LT50"]
+**Output (Initial Match before Validation):**
+```json
+{
+  "MfrName": "ORBIT INDUSTRIES",
+  "ManufacturerNameConfidenceScore": 100,
+  "MfrPartNum": "SSBT5",
+  "PartNumberConfidenceScore": 100,
+  "UNSPSC": "39121321",
+  "UNSPSCConfidenceScore": 87,
+  "UPC": "835243027992",
+  "IsVerified": true,
+  "matched_description": "ORBT SSB-T5 TELESCOPING BRACKET"
+}
+```
+*(Note: This result will be flagged as `is_invalidated=true` by the Context Validator stage.)*
 
-2. **Database Query:**
-   - Found product with part number "LT50"
-   - Manufacturer: "THOMAS & BETTS" (child of ABB)
+### Example 4: Ambiguous Match (Multiple Candidates)
 
-3. **Manufacturer Detection:**
-   - Found "ABB" in description
-   - ABB is parent of THOMAS & BETTS
+**Input:**
+```
+Description: "SLTITE 034 UA 100B 3/4IN UL LIQUATITE"
+```
 
-4. **Confidence Calculation:**
-   - Part Number: 85
-   - Manufacturer: 83 (PARENT relationship, not DIRECT)
-   - UNSPSC: 75
-
-5. **Verification:**
-   - IsVerified: false (not DIRECT relationship)
+**Processing:**
+1.  **Part Number Extraction:**
+    - Candidates: ["034", "100B"].
+    - "034" is short/ambiguous.
+2.  **Database Query:**
+    - Found Match for "SLTITE" as manufacturer alias?
+    - Match Found: `MfrName="COOPER ELECTRIC SUPPLY"`, `UncleanName="SLTITE"`.
+3.  **Confidence Calculation:**
+    - **Manufacturer**: 100 (Explicit match found).
+    - **Part Number**: 0 (No clear part number match in DB).
+4.  **Verification:**
+    - **IsVerified**: `false` (No unique part number match).
 
 **Output:**
 ```json
 {
-  "MfrName": "THOMAS & BETTS",
-  "ManufacturerNameConfidenceScore": 83,
-  "MfrPartNum": "LT50",
-  "PartNumberConfidenceScore": 85,
-  "UNSPSC": "39131705",
-  "UNSPSCConfidenceScore": 75,
+  "MfrName": "COOPER ELECTRIC SUPPLY",
+  "ManufacturerNameConfidenceScore": 100,
+  "PartNumberConfidenceScore": 0,
+  "UNSPSC": null,
+  "UNSPSCConfidenceScore": 0,
   "IsVerified": false,
-  "IsMfrClean": true,
-  "IsMfrDirect": false,
-  "DescriptionSimilarity": 0.88,
-  "description": "abb lt50 liquidtight connector"
-}
-```
-
-### Example 4: Ambiguous Part Numbers (Multiple UIPNCs)
-
-**Input:**
-```
-Description: "CONDUIT FITTINGS 1/2 3/4 1 INCH SIZES"
-```
-
-**Processing:**
-1. **Part Number Extraction:**
-   - Extracted: ["1/2", "3/4", "1"]
-   - UIPNCs: ["1/2", "3/4", "1"] (all potential part numbers)
-
-2. **Database Query:**
-   - Found products for all three part numbers
-
-3. **Confidence Calculation:**
-   - Each part number penalized for ambiguity
-   - Part Number: 60-65 (penalty for 3 UIPNCs)
-   - Manufacturer: 70-75
-   - UNSPSC: 65-70
-
-4. **Filtering:**
-   - All matches have moderate confidence
-   - Select highest scoring
-
-**Output:**
-```json
-{
-  "MfrName": "EATON",
-  "ManufacturerNameConfidenceScore": 75,
-  "MfrPartNum": "1/2",
-  "PartNumberConfidenceScore": 65,
-  "UNSPSC": "39131705",
-  "UNSPSCConfidenceScore": 70,
-  "IsVerified": false,
-  "IsMfrClean": true,
-  "IsMfrDirect": true,
-  "DescriptionSimilarity": 0.78,
-  "description": "conduit fittings 1/2 3/4 1 inch sizes"
-}
-```
-
-### Example 5: No Match Found
-
-**Input:**
-```
-Description: "RANDOM ELECTRICAL ITEM XYZ999"
-```
-
-**Processing:**
-
-1. **Part Number Extraction:**
-   - Extracted: ["XYZ999"]
-
-2. **Database Query:**
-   - No products found with part number "XYZ999"
-
-3. **Manufacturer Detection:**
-   - No known manufacturers found in description
-
-4. **Fallback:**
-   - No manufacturer-only match possible
-
-**Output:**
-```json
-{
-  "message": "No match found for invoice item",
-  "description": "random electrical item xyz999"
+  "description": "sltite 034 ua 100b 3/4in ul liquatite"
 }
 ```
 
 ## Performance Characteristics
 
 ### Throughput
-- ~200-300 descriptions per second
-- Bottleneck: Database queries or Azure AI Search
-- Part number extraction is fast (< 10ms)
+- **~10-20 descriptions per second** (per instance, assuming asynchronous execution).
+- **Bottlenecks**:
+  - **Azure AI Search / SQL Database**: The primary latency driver (~200-500ms per call).
+  - **Azure OpenAI Embedding API**: Secondary I/O latency (~50-200ms).
 
-### Latency
-- Part number extraction: 5-10ms
-- Database query: 50-200ms
-- Manufacturer detection: 10-20ms
-- Confidence calculation: 10-20ms
-- Total: 75-250ms per description
+### Latency Breakdown
+- **Preprocessing & Extraction**: < 10ms (CPU bound).
+- **Embedding Generation**: 50-200ms (External API call).
+- **Data Lookup (Index/DB)**: 200-500ms (Network I/O).
+- **Scoring & logic**: < 20ms (CPU bound).
+- **Total Latency**: **~300-800ms per description**.
 
 ### Accuracy
-- Exact part number match: Very high accuracy (> 95%)
-- Manufacturer-only match: Moderate accuracy (70-80%)
-- Ambiguous part numbers: Lower accuracy (60-70%)
+- **Exact Part Number Match**: Very High Precision (> 98%), variable Recall (depends on data quality).
+- **Manufacturer-Only Match**: Moderate (70-80%) - useful for categorization but not item identification.
+- **Ambiguous Matches**: Lower (60-70%) - frequent false positives if multiple parts share the same number (e.g., common sequences like "120V" or "5000" that appear across many manufacturers).
 
 ### Resource Usage
-- Memory: Minimal (< 50 MB per request)
-- CPU: Low (mostly I/O bound)
-- Network: Moderate (database or search queries)
+- **Memory**: Moderate (~100-200 MB). Stores the cached Manufacturer Data dictionary.
+- **CPU**: Low. Most time is spent awaiting I/O (Async/Await).
+- **Network**: Moderate. Continuous traffic to Azure OpenAI and Azure AI Search/SQL.
 
 ## Monitoring and Troubleshooting
 
@@ -880,13 +877,13 @@ Description: "RANDOM ELECTRICAL ITEM XYZ999"
   - Low description similarity
 - Solution: Review scoring configuration, check manufacturer relationships, improve description quality
 
-**Issue: Manufacturer-Only Matches**
-- Symptom: Frequent fallback to manufacturer-only
+**Issue: Low Confidence Scores**
+- Symptom: Matches below verification threshold.
 - Possible Causes:
-  - Part numbers not extracted correctly
-  - Part numbers not in database
-  - Description lacks part numbers
-- Solution: Improve part number extraction, expand database coverage, request better descriptions
+  - Weak part number match (e.g., partial string match).
+  - **Conflicting Manufacturer**: An unrelated manufacturer name (not a parent/child) was found in the description, triggering a penalty.
+  - Low description similarity.
+- Solution: Check if the "conflicting" manufacturer is actually a valid parent/child alias that is missing from the mapping database. Review scoring weights in configuration.
 
 **Issue: Database Query Failures**
 - Symptom: Fallback to Azure AI Search

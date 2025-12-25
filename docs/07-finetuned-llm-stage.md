@@ -1,12 +1,12 @@
 # FINETUNED_LLM Stage - Custom AI Model Extraction
 
-**Last Updated:** 2025-12-17  
-**Audience:** Business Analysts, QA Professionals  
+**Last Updated:** 2025-12-23
+**Author:** Kirill Levtov
 **Related:** [Solution Overview](01-solution-overview.md) | [SEMANTIC_SEARCH Stage](06-semantic-search-stage.md) | [EXTRACTION_WITH_LLM_AND_WEBSEARCH Stage](08-extraction-with-llm-and-websearch-stage.md)
 
 ## Overview
 
-The FINETUNED_LLM stage uses a custom-trained Large Language Model (LLM) to extract manufacturer names, part numbers, and UNSPSC codes from invoice descriptions. Unlike the base GPT-4 model, this LLM has been fine-tuned on thousands of real invoice examples, making it highly specialized for electrical parts extraction.
+The FINETUNED_LLM stage uses a custom-trained Large Language Model (LLM) to extract manufacturer names, part numbers, and UNSPSC codes from invoice descriptions. Unlike the base GPT-4 model, this LLM has been fine-tuned on thousands of product descriptions, making it highly specialized for electrical parts extraction.
 
 This stage employs Retrieval Augmented Generation (RAG) to provide the LLM with relevant examples and manufacturer aliases as context, improving extraction accuracy. It also uses token-level log probabilities to calculate confidence scores for each extracted field.
 
@@ -16,8 +16,8 @@ The stage is typically the fourth extraction stage in the pipeline (after CLASSI
 
 ### Fine-Tuned LLM
 A Large Language Model that has been trained on domain-specific data:
-- **Base Model**: GPT-4o or similar
-- **Training Data**: Thousands of invoice line items with labeled manufacturer, part number, and UNSPSC
+- **Base Model**: GPT-4o
+- **Training Data**: ~500K of product descriptions with labeled manufacturer, part number, and UNSPSC
 - **Specialization**: Electrical parts and construction materials
 - **Advantage**: Better accuracy than general-purpose models for this specific task
 
@@ -80,8 +80,17 @@ Input Description (for extraction):
 EATON BR120 CIRCUIT BREAKER 20A
 ```
 
-**Attempt 3: Zero Context (Fallback)**
+**Attempt 3: Aliases Only (Fallback)**
+- **Includes**: Manufacturer Aliases **only**.
+- **Excludes**: RAG Examples.
+- **Goal**: Remove potential noise from misleading examples while still allowing the LLM to resolve manufacturer abbreviations (e.g., "T&B" -> "THOMAS & BETTS").
+
+**Example Prompt (Attempt 3):**
 ```
+Manufacturer Alias Dictionary:
+T&B -> THOMAS & BETTS
+ABB -> ABB
+
 Input Description:
 EATON BR120 CIRCUIT BREAKER 20A
 ```
@@ -89,7 +98,7 @@ EATON BR120 CIRCUIT BREAKER 20A
 **Strategy Rationale:**
 - Attempt 1: Aggressive nudging with "find patterns to use"
 - Attempt 2: Softer guidance with "for reference only"
-- Attempt 3: No context, relies purely on fine-tuning
+- Attempt 3: Minimal context, relies primarily on fine-tuning
 - Each attempt validates output; if validation fails, try next strategy
 
 ### Token-Level Confidence Scoring
@@ -115,45 +124,32 @@ Confidence: 92%
 **Why This Matters:**
 - Higher confidence = LLM is more certain
 - Lower confidence = LLM is guessing
-- Helps final consolidation choose best result
-
-### RPA Data Boosting
-If RPA (Robotic Process Automation) provided values that match AI-extracted values, confidence scores are boosted:
-
-**Boost Logic:**
-```python
-if normalize(rpa_value) == normalize(ai_value):
-    confidence += boost_amount
-```
-
-**Example:**
-- RPA extracted: "THOMAS & BETTS"
-- AI extracted: "THOMAS & BETTS"
-- Match! Boost manufacturer confidence by 10 points
-
-**Rationale:**
-- RPA and AI independently extracted the same value
-- Agreement increases confidence
-- Reduces false positives
+- Helps the pipline engine and final consolidation choose best result
 
 ### Validation Rules
-The stage validates extracted values before accepting them:
+The stage performs rigorous validation on the LLM's output before accepting it. Because the confidence scoring mechanism requires token-level **log probabilities** (`logprobs`), this stage cannot use Azure OpenAI's native "Structured Output" feature (JSON mode), which is currently incompatible with `logprobs`. Instead, the system enforces validation via custom Python logic:
 
-**UNSPSC Validation:**
-- Must be exactly 8 digits
-- Must be numeric only
-- Example: "39131711" ✓, "3913171" ✗, "3913171A" ✗
+**1. JSON Structure Validation:**
+- The raw text response is parsed to ensure it contains valid JSON.
+- It handles common LLM formatting issues (e.g., Markdown code blocks like \`\`\`json ... \`\`\`).
+- If parsing fails, the attempt is rejected.
 
-**Part Number Validation:**
-- Must appear in the original description (alphanumeric match)
-- Exception: GENERIC items (no part number expected)
-- Example: Description "T&B 425 SLEEVE" → Part Number "425" ✓
-- Example: Description "T&B 425 SLEEVE" → Part Number "LT50" ✗
+**2. UNSPSC Validation:**
+- Must be exactly **8 digits**.
+- Must be numeric only.
+- **Example:** "39131711" (Valid), "3913171" (Invalid - too short), "3913171A" (Invalid - alphanumeric).
 
-**Validation Failure:**
-- If validation fails, retry with next prompt strategy
-- If all strategies fail, stage returns error
-- Subsequent stages can still provide results
+**3. Part Number Validation:**
+- The extracted part number is normalized (alphanumeric characters only).
+- It must be present within the normalized input description.
+- **Exception:** For `GENERIC` items (Case 1), part number validation is skipped as none is expected.
+- **Example:**
+  - Description: "T&B 425 SLEEVE" → Extracted: "425" (Valid).
+  - Description: "T&B 425 SLEEVE" → Extracted: "LT50" (Invalid - hallucination).
+
+**Validation Failure Strategy:**
+- If any validation rule fails, the system triggers a **retry** using the next available Prompt Strategy (e.g., moving from "Aggressive Context" to "Moderate Context").
+- If all strategies fail, the stage returns an error state, and the pipeline relies on subsequent stages (like Web Search) for results.
 
 
 ## Python Modules
@@ -249,7 +245,7 @@ Prompt templates for fine-tuned LLM.
   - Simpler output format
 
 **General Prompt Template:**
-```
+````
 {description}
 
 Format the response strictly as a JSON object. No additional text, explanations, or disclaimers - only return JSON in this structure:
@@ -261,7 +257,19 @@ Format the response strictly as a JSON object. No additional text, explanations,
 }
 ```
 If any attribute is unavailable, return an empty string for that attribute.
+````
+
+**UNSPSC-Only Prompt Template (Special Case 1):**
+````
+{description}
+
+Format the response strictly as a JSON object. Return ONLY the UNSPSC code.
+```json
+{
+    "UNSPSC": "string"
+}
 ```
+````
 
 ### llm.py
 LLM client wrapper for fine-tuned model.
@@ -335,9 +343,9 @@ FINETUNED_LLM:
 | `unspsc` | int | Minimum confidence to use UNSPSC | 75 |
 
 **Threshold Behavior:**
-- If confidence < threshold, field is not used in final consolidation
-- High thresholds ensure only high-quality extractions are used
-- Part number threshold is highest (100) because accuracy is critical
+- **Pipeline Control**: These thresholds primarily determine **early exit**. If the confidence scores for Manufacturer, Part Number, and UNSPSC all meet or exceed their respective thresholds, the pipeline stops immediately, and the item is marked as ready (RC-AI).
+- **Consolidation**: If thresholds are *not* met, the pipeline continues to the next stage. However, the values extracted here are still preserved. In the final consolidation, they may still be selected if they represent the highest confidence available across all stages (though the final invoice line status will be DS1).
+- **Part Number Precision**: The Part Number threshold is set to **100** based on empirical tuning to ensure maximum precision for this specific model.
 
 ### LLM Settings
 
@@ -364,256 +372,88 @@ FINETUNED_LLM:
 ```mermaid
 graph TD
     A[Start] --> B[Select Prompt Template]
-    B --> C[Attempt 1: Aggressive Context]
-    C --> D[Build RAG Prompt]
-    D --> E[Call Fine-Tuned LLM]
-    E --> F[Extract JSON Response]
-    F --> G{Validation Pass?}
-    G -->|Yes| H[Calculate Confidence Scores]
-    G -->|No| I{More Attempts?}
-    I -->|Yes| J[Attempt 2: Moderate Context]
-    I -->|No| K[Error: All Attempts Failed]
-    J --> D
+
+    B --> C1[Attempt 1: Aggressive Context]
+    C1 --> D1[Call LLM & Validate]
+    D1 -->|Success| H[Calculate Confidence Scores]
+    D1 -->|Fail| C2[Attempt 2: Moderate Context]
+
+    C2 --> D2[Call LLM & Validate]
+    D2 -->|Success| H
+    D2 -->|Fail| C3[Attempt 3: Aliases Only]
+
+    C3 --> D3[Call LLM & Validate]
+    D3 -->|Success| H
+    D3 -->|Fail| K[Error: All Attempts Failed]
+
     H --> L[Clean Manufacturer Name]
-    L --> M[Check RPA Boost]
-    M --> N[Return Results]
-    
+    L --> N[Return Results]
+
     style A fill:#e1f5ff
-    style D fill:#fff4e1
-    style E fill:#f3e5f5
-    style G fill:#fff4e1
+    style C1 fill:#fff4e1
+    style C2 fill:#fff4e1
+    style C3 fill:#fff4e1
+    style D1 fill:#f3e5f5
+    style D2 fill:#f3e5f5
+    style D3 fill:#f3e5f5
     style H fill:#e8f5e9
     style K fill:#ffebee
 ```
 
 ### Step-by-Step Processing
 
-**1. Select Prompt Template**
+**1. Template Selection**
+The stage selects the base prompt template. If the item is a "Generic" special case (`CASE_1`), it uses a simplified template that only requests the UNSPSC code. Otherwise, it uses the standard template for Manufacturer, Part Number, and UNSPSC.
 
-The stage selects the appropriate prompt based on special case handling:
+**2. Hardened Execution Loop (Attempts 1-3)**
+The system enters a retry loop, attempting up to three different prompt strategies to get a valid result.
 
-```python
-if ivce_dtl.is_special_case and ivce_dtl.special_case_type == SpecialCases.CASE_1:
-    prompt = Prompts.get_fine_tuned_llm_prompt_for_unspsc()
-else:
-    prompt = Prompts.get_fine_tuned_llm_prompt()
-```
+*   **Strategy Sequence**:
+    1.  **Aggressive Context**: Includes Manufacturer Aliases + Top 3 Examples.
+    2.  **Moderate Context**: Includes Manufacturer Aliases + Top 3 Examples (Reference Only).
+    3.  **Aliases Only**: Includes Manufacturer Aliases, removes Examples (Fallback).
 
-**Special Case 1 (UNSPSC-Only):**
-- Used for generic items or items without manufacturer/part number
-- Only extracts UNSPSC code
-- Simpler prompt and output
+*   **A. Construct Prompt**:
+    For the current attempt, the system builds the final prompt string by injecting the selected context (aliases/examples) and the cleaned invoice description.
 
-**General Case:**
-- Extracts manufacturer name, part number, and UNSPSC
-- Full prompt with all fields
+    *Example (Attempt 3 - Aliases Only):*
+    ```text
+    Manufacturer Alias Dictionary:
+    T&B -> THOMAS & BETTS
 
-**2. Build RAG Prompt (Attempt-Specific)**
+    Input Description (for extraction):
+    T&B 425 SLEEVE
+    ```
 
-For each attempt, the stage builds a context-augmented prompt:
+*   **B. Call Fine-Tuned LLM**:
+    Calls the Azure OpenAI `gpt-4o-finetuned` model with `temperature=0.1` and `logprobs=True`.
 
-**Attempt 1: Aggressive Context**
-```
-Manufacturer Alias Dictionary:
-T&B -> THOMAS & BETTS
+*   **C. Validation**:
+    The raw text response is parsed and validated:
+    1.  **JSON Structure**: Must be valid JSON.
+    2.  **UNSPSC**: Must be exactly 8 digits.
+    3.  **Part Number**: The extracted alphanumeric sequence must exist in the input description (prevents hallucinations).
 
-Examples (find patterns to use for extraction):
-'T&B 425 SLEEVE' -> {'ManufacturerName': 'THOMAS & BETTS', 'PartNumber': '425', 'UNSPSC': '39131711'}
+    *   **If Validation Passes**: The loop breaks, and processing moves to Step 3.
+    *   **If Validation Fails**: A warning is logged, and the loop continues to the next strategy. If all 3 attempts fail, the stage returns an error.
 
-Input Description (for extraction):
-EATON BR120 CIRCUIT BREAKER 20A
-```
+**3. Confidence Calculation**
+Using the `logprobs` from the successful response, the system calculates a confidence score (0-100) for each extracted field.
 
-**Attempt 2: Moderate Context**
-```
-Manufacturer Alias Dictionary:
-T&B -> THOMAS & BETTS
+*   **Token Alignment**: Identifies which tokens correspond to specific values (e.g., "EATON").
+*   **Probability Conversion**: Converts log probabilities to linear probabilities ($p = e^{logp}$).
+*   **Aggregation**: Calculates the mean probability across all tokens for a field.
 
-Examples (for reference only):
-'T&B 425 SLEEVE' -> {'ManufacturerName': 'THOMAS & BETTS', 'PartNumber': '425', 'UNSPSC': '39131711'}
+**4. Manufacturer Name Cleaning**
+The extracted manufacturer name is normalized using the SQL database:
+- **Normalization**: Removing accents, stripping special characters, upper-casing.
+- **Lookup**: Checks against the master manufacturer mapping table (e.g., "T&B" -> "THOMAS & BETTS").
+- **Flag**: Sets `is_mfr_clean_flag` to true if a valid mapping is found.
 
-Input Description (for extraction):
-EATON BR120 CIRCUIT BREAKER 20A
-```
+**5. Return Results**
+The final stage result is constructed, including the extracted values, confidence scores, and RAG trace metadata.
 
-**Attempt 3: Zero Context**
-```
-Input Description:
-EATON BR120 CIRCUIT BREAKER 20A
-```
-
-**Context Sources:**
-- **Manufacturer Aliases**: From COMPLETE_MATCH stage or database
-- **Similar Examples**: Top 3 from SEMANTIC_SEARCH stage
-- **Target Description**: Cleaned invoice description
-
-**3. Call Fine-Tuned LLM**
-
-The stage executes the LLM chain:
-
-```python
-response = await llm_instance.get_llm_response(
-    chain=chain, 
-    params={"description": full_input_string}
-)
-```
-
-**LLM Response:**
-```json
-{
-  "ManufacturerName": "EATON",
-  "PartNumber": "BR120",
-  "UNSPSC": "39121016"
-}
-```
-
-**Response Metadata:**
-- Tokens: ["EATON", "BR", "120", ...]
-- Log Probabilities: [-0.05, -0.10, -0.08, ...]
-- Used for confidence scoring
-
-**4. Extract and Validate JSON**
-
-The stage extracts JSON from the response and validates it:
-
-**JSON Extraction:**
-```python
-results_json = extract_json(response.content)
-```
-- Handles markdown code blocks
-- Removes extra text
-- Parses JSON structure
-
-**Validation Checks:**
-
-**a) Content Validation:**
-```python
-if not response.content or not response.content.strip():
-    raise ValueError("LLM returned empty content")
-```
-
-**b) JSON Validation:**
-```python
-if not results_json:
-    raise ValueError("Failed to extract valid JSON from response")
-```
-
-**c) UNSPSC Validation:**
-```python
-unspsc = results_json.get("UNSPSC")
-if unspsc and is_not_empty(str(unspsc)):
-    clean_unspsc = str(unspsc).strip()
-    if not (clean_unspsc.isdigit() and len(clean_unspsc) == 8):
-        raise ValueError(f"Extracted UNSPSC '{unspsc}' is not a valid 8-digit code.")
-```
-
-**d) Part Number Validation:**
-```python
-# Skip for GENERIC items
-if not is_generic:
-    pn = results_json.get("PartNumber")
-    if pn and is_not_empty(str(pn)):
-        norm_pn = get_alphanumeric(str(pn)).upper()
-        norm_target = get_alphanumeric(target_description).upper()
-        
-        if norm_pn not in norm_target:
-            raise ValueError(f"Extracted Part Number '{pn}' not found in Input Description.")
-```
-
-**Validation Failure:**
-- If any validation fails, retry with next prompt strategy
-- Attempt 1 → Attempt 2 → Attempt 3
-- If all fail, raise error
-
-**5. Calculate Confidence Scores**
-
-The stage calculates confidence scores using token-level log probabilities:
-
-**For Each Field:**
-
-**a) Identify Tokens:**
-```python
-# Find which tokens belong to "EATON"
-indices = _get_tokens_of_string(token_list, "EATON")
-# Example: [0] (first token)
-```
-
-**b) Extract Log Probabilities:**
-```python
-logprobs = df.iloc[indices]["logprob"].to_numpy(dtype=float)
-# Example: [-0.05]
-```
-
-**c) Convert to Probabilities:**
-```python
-logprobs = np.clip(logprobs, a_min=None, a_max=0.0)  # Clip to avoid overflow
-probs = np.exp(logprobs)
-# Example: [0.95]
-```
-
-**d) Calculate Mean:**
-```python
-mean_p = float(np.mean(probs))
-# Example: 0.95
-```
-
-**e) Convert to Percentage:**
-```python
-conf = max(0.0, min(mean_p, 1.0))  # Clamp to [0, 1]
-confidence = round(conf * 100, 2)
-# Example: 95.0
-```
-
-**Result:**
-```json
-{
-  "confidence_score": {
-    "manufacturer_name": 95.0,
-    "part_number": 92.0,
-    "unspsc": 88.0
-  }
-}
-```
-
-**6. Clean Manufacturer Name**
-
-The stage cleans the manufacturer name using database mapping:
-
-```python
-mfr_name = remove_accents(mfr_name.strip().upper())
-cln_mfr_name, cln_mfr_flag = await get_clean_mfr_name(sdp, mfr_name)
-```
-
-**Cleaning Process:**
-- Remove accents: "CAFÉ" → "CAFE"
-- Strip whitespace
-- Convert to uppercase
-- Look up in manufacturer mapping table
-- Return clean name and flag
-
-**Example:**
-- Extracted: "T&B"
-- Cleaned: "THOMAS & BETTS"
-- Flag: True (mapping found)
-
-**7. Check RPA Boost**
-
-If RPA provided values, check for matches and boost confidence:
-
-```python
-if normalize(rpa_value) == normalize(ai_value):
-    confidence += boost_amount
-```
-
-**Example:**
-- RPA: "THOMAS & BETTS"
-- AI: "THOMAS & BETTS"
-- Match! Boost manufacturer confidence by 10 points
-
-**8. Return Results**
-
-The stage returns results with confidence scores:
-
+*Example Output:*
 ```json
 {
   "manufacturer_name": "EATON",
@@ -627,10 +467,32 @@ The stage returns results with confidence scores:
   },
   "is_mfr_clean_flag": true,
   "is_verified_flag": false,
-  "description": "eaton br120 circuit breaker 20a"
+  "description": "eaton br120 circuit breaker 20a",
+  "rag_trace": {
+    "is_mfr_dict_provided": true,
+    "prompt_strategy": "patterns_for_extraction",
+    "examples_count": 2,
+    "examples_used": [
+      {
+        "input": "EATON BR115 CIRCUIT BREAKER 15A",
+        "output": {
+          "ManufacturerName": "EATON",
+          "PartNumber": "BR115",
+          "UNSPSC": "39121016"
+        }
+      },
+      {
+        "input": "SIEMENS B120 CIRCUIT BREAKER",
+        "output": {
+          "ManufacturerName": "SIEMENS",
+          "PartNumber": "B120",
+          "UNSPSC": "39121601"
+        }
+      }
+    ]
+  }
 }
 ```
-
 
 ### RAG (Retrieval Augmented Generation) Logic
 
@@ -690,7 +552,7 @@ The stage records RAG usage for debugging:
 {
   "is_mfr_dict_provided": true,
   "prompt_strategy": "patterns_for_extraction",
-  "examples_count": 3,
+  "examples_count": 1,
   "examples_used": [
     {
       "input": "T&B 425 SLEEVE",
@@ -750,7 +612,7 @@ The stage records RAG usage for debugging:
 ### Stage Execution Order
 
 ```
-CLASSIFICATION → COMPLETE_MATCH → CONTEXT_VALIDATOR → SEMANTIC_SEARCH → FINETUNED_LLM → EXTRACTION_WITH_LLM_AND_WEBSEARCH
+CLASSIFICATION → SEMANTIC_SEARCH → COMPLETE_MATCH → CONTEXT_VALIDATOR →  FINETUNED_LLM → EXTRACTION_WITH_LLM_AND_WEBSEARCH
 ```
 
 **Key Points:**
@@ -777,6 +639,16 @@ The stage returns the following fields:
 | `is_verified_flag` | boolean | Always false for this stage | false |
 | `description` | string | Cleaned invoice description | "eaton br120 circuit breaker 20a" |
 | `rag_trace` | object | RAG usage metadata | See below |
+
+**RAG Trace Metadata Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `prompt_strategy` | string | The specific strategy used for the successful attempt (e.g., `patterns_for_extraction`, `reference_only`, `no_context`). |
+| `examples_count` | int | Number of RAG examples injected into the prompt (0, 1, 2, or 3). |
+| `is_mfr_dict_provided` | boolean | Indicates if the manufacturer alias dictionary was available and included in the prompt. |
+| `examples_used` | list | Array of the specific example objects (Input/Output pairs) passed to the LLM. |
+
 
 **RAG Trace Object:**
 ```json
@@ -872,7 +744,25 @@ EATON BR120 CIRCUIT BREAKER 20A
   "rag_trace": {
     "is_mfr_dict_provided": true,
     "prompt_strategy": "patterns_for_extraction",
-    "examples_count": 2
+    "examples_count": 2,
+    "examples_used": [
+      {
+        "input": "EATON BR220 CIRCUIT BREAKER 20A",
+        "output": {
+          "ManufacturerName": "EATON",
+          "PartNumber": "BR220",
+          "UNSPSC": "39121016"
+        }
+      },
+      {
+        "input": "EATON BR115 CIRCUIT BREAKER 15A",
+        "output": {
+          "ManufacturerName": "EATON",
+          "PartNumber": "BR115",
+          "UNSPSC": "39121016"
+        }
+      }
+    ]
   }
 }
 ```
@@ -935,7 +825,22 @@ T&B 425 1-1/4 INSULATING SLEEVE
   },
   "is_mfr_clean_flag": true,
   "is_verified_flag": false,
-  "description": "t b 425 1-1/4 insulating sleeve"
+  "description": "t b 425 1-1/4 insulating sleeve",
+  "rag_trace": {
+    "is_mfr_dict_provided": true,
+    "prompt_strategy": "patterns_for_extraction",
+    "examples_count": 1,
+    "examples_used": [
+      {
+        "input": "T&B 426 1-1/2 INSULATING SLEEVE",
+        "output": {
+          "ManufacturerName": "THOMAS & BETTS",
+          "PartNumber": "426",
+          "UNSPSC": "39131711"
+        }
+      }
+    ]
+  }
 }
 ```
 
@@ -1129,51 +1034,32 @@ GENERIC CIRCUIT BREAKER
 ## Performance Characteristics
 
 ### Throughput
-- ~20-50 extractions per second
-- Bottleneck: LLM API calls
-- Can be parallelized across multiple invoice lines
+- **Dependent on Quota**: Throughput is strictly limited by the assigned Tokens-Per-Minute (TPM) quota on the Azure OpenAI fine-tuned model deployment.
+- **Bottleneck**: LLM inference latency and concurrency limits.
 
 ### Latency
-- LLM API call: 1000-3000ms (depends on model and load)
-- Prompt construction: 10-20ms
-- Confidence calculation: 20-50ms
-- Total per attempt: 1000-3000ms
-- Total with retries: Up to 9000ms (3 attempts × 3000ms)
-
-**Latency by Attempt:**
-- Attempt 1 (with context): 2000-3000ms (longer prompt)
-- Attempt 2 (with context): 2000-3000ms
-- Attempt 3 (no context): 1000-2000ms (shorter prompt)
+- **Single Attempt**: 1000-3000ms.
+- **With Retries**: Up to 9000ms (if all 3 prompt strategies are attempted and fail validation).
+- **Breakdown**:
+  - **Attempts 1 & 2 (With Context)**: ~2000-3000ms (Higher latency due to longer context window).
+  - **Attempt 3 (Aliases Only)**: ~1000-2000ms (Lower latency due to shorter prompt).
 
 ### Accuracy
-- Manufacturer extraction: Very high (> 90%)
-- Part number extraction: High (> 85%)
-- UNSPSC extraction: High (> 80%)
-
-**Factors Affecting Accuracy:**
-- Fine-tuning quality: Better training data = better accuracy
-- RAG context: Aliases and examples improve accuracy
-- Description quality: Clear descriptions = better extraction
-- Validation rules: Prevent many false positives
+- **Assessment**: **Moderate to High**.
+- **Comparison**: Generally slightly lower precision than the deterministic **COMPLETE_MATCH** stage or the live-grounded **WEB_SEARCH** stage due to the generative nature of the model.
+- **Strategic Value**: Serves as a high-performance, cost-effective gatekeeper. It resolves a significant volume of items that fail exact matching, preventing them from flowing to the slower and more expensive Web Search stage.
+- **Future Optimization**: The current model was fine-tuned on curated catalog data. Accuracy on messy, real-world invoice descriptions can be further improved by incorporating actual invoice data into future fine-tuning datasets.
 
 ### Resource Usage
-- Memory: Minimal (< 20 MB per request)
-- CPU: Low (mostly I/O bound waiting for LLM)
-- Network: Moderate (LLM API calls)
-- Cost: LLM API usage (tokens consumed per extraction)
+- **Memory**: Minimal (< 20 MB per request).
+- **CPU**: Low (Primary operation is I/O waiting for LLM response).
+- **Network**: Moderate (Continuous traffic to Azure OpenAI).
+- **Cost**: Driven by Token Usage and the pricing tier of Fine-Tuned models (typically higher than base models).
 
 ### Token Usage
-- Typical prompt (with context): 400-800 tokens
-- Typical prompt (no context): 100-200 tokens
-- Typical response: 50-100 tokens
-- Total per extraction: 150-900 tokens
-- Cost depends on Azure OpenAI pricing
-
-**Token Breakdown:**
-- Manufacturer aliases: 50-100 tokens
-- Similar examples: 200-400 tokens (3 examples)
-- Target description: 50-100 tokens
-- Response: 50-100 tokens
+- **Input**: 400-800 tokens (Aggressive/Moderate strategies), 100-200 tokens (Fallback strategy).
+- **Output**: 50-100 tokens.
+- **Total**: ~150-900 tokens per extraction.
 
 
 ## Monitoring and Troubleshooting
@@ -1287,37 +1173,3 @@ logger.setLevel(logging.DEBUG)
 - Track which attempts succeed
 - Identify common failure modes
 - Adjust prompt strategies if needed
-
-### Quality Metrics
-
-**Extraction Success Rate:**
-- Percentage of extractions that pass validation
-- Typical range: 85-95%
-- Too low (< 80%): Review validation rules or fine-tuning
-
-**Confidence Score Distribution:**
-- Manufacturer: 85-95 (high confidence)
-- Part Number: 80-90 (moderate-high confidence)
-- UNSPSC: 75-85 (moderate confidence)
-
-**Prompt Strategy Usage:**
-- Attempt 1 success: 70-80%
-- Attempt 2 success: 15-20%
-- Attempt 3 success: 5-10%
-- All fail: < 5%
-
-**RAG Context Availability:**
-- Manufacturer aliases provided: 60-80%
-- Similar examples provided: 70-90%
-- Both provided: 50-70%
-
-**Latency Percentiles:**
-- P50: 1500-2000ms
-- P95: 2500-3500ms
-- P99: 4000-6000ms
-
-**Error Rate:**
-- Target: < 5% of extractions
-- Includes API errors, validation failures, timeouts
-- Excludes business logic issues (low confidence)
-

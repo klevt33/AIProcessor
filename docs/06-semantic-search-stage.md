@@ -1,7 +1,7 @@
 # SEMANTIC_SEARCH Stage - Vector-Based Similarity Search
 
-**Last Updated:** 2025-12-17  
-**Audience:** Business Analysts, QA Professionals  
+**Last Updated:** 2025-12-22
+**Author:** Kirill Levtov
 **Related:** [Solution Overview](01-solution-overview.md) | [Indexer](02-indexer.md) | [FINETUNED_LLM Stage](07-finetuned-llm-stage.md)
 
 ## Overview
@@ -188,22 +188,22 @@ SEMANTIC_SEARCH:
   SEMANTIC_SEARCH:
     SEARCH:
       similarity_threshold: 0.75
-      top_results: 10
-      max_results: 50
-    
+      top_results: 5
+      max_results: 25
+
     WEIGHTS:
-      mid_point: 0.85
+      mid_point: 0.55
       exp_factor: 10
-    
+
     CONFIDENCE:
+      single_match_factor: 0.95
       min_confidence_threshold: 50
-      single_match_factor: 1.1
       single_match_similarity_threshold: 80
-    
+
     UNSPSC:
-      level_thresholds: [70, 60, 50]
-      generic_delta_percentage: 15
-    
+      level_thresholds: [90, 80, 70, 60]
+      generic_delta_percentage: 10
+
     RAG_CONTEXT:
       min_example_similarity: 0.85
 ```
@@ -215,14 +215,14 @@ SEMANTIC_SEARCH:
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
 | `similarity_threshold` | float | Minimum similarity score (0-1) to include result | 0.75 |
-| `top_results` | int | Target number of distinct items to return | 10 |
-| `max_results` | int | Maximum results to fetch per search iteration | 50 |
+| `top_results` | int | Target number of distinct items to return | 5 |
+| `max_results` | int | Maximum results to fetch per search iteration | 25 |
 
 **WEIGHTS Parameters:**
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `mid_point` | float | Similarity score where weights start increasing significantly | 0.85 |
+| `mid_point` | float | Point where similarity becomes meaningful | 0.55 |
 | `exp_factor` | float | Controls steepness of exponential weighting curve | 10 |
 
 **CONFIDENCE Parameters:**
@@ -230,15 +230,15 @@ SEMANTIC_SEARCH:
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
 | `min_confidence_threshold` | int | Minimum confidence (0-100) to return result | 50 |
-| `single_match_factor` | float | Multiplier for confidence when only one result found | 1.1 |
+| `single_match_factor` | float | Multiplier for confidence when only one result found | 0.95 |
 | `single_match_similarity_threshold` | int | Minimum similarity (0-100) for single match to be accepted | 80 |
 
 **UNSPSC Parameters:**
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `level_thresholds` | list[int] | Confidence thresholds for commodity, class, family levels | [70, 60, 50] |
-| `generic_delta_percentage` | int | Percentage by which generic must exceed specific to be chosen | 15 |
+| `level_thresholds` | list[int] | Thresholds for each UNSPSC level when comparing different levels | [90, 80, 70, 60] |
+| `generic_delta_percentage` | int | Percentage by which generic must exceed specific to be chosen | 10 |
 
 **RAG_CONTEXT Parameters:**
 
@@ -264,7 +264,7 @@ graph TD
     I --> K[Process UNSPSC]
     J --> L[Return Results]
     K --> L
-    
+
     style A fill:#e1f5ff
     style C fill:#fff4e1
     style D fill:#f3e5f5
@@ -286,13 +286,13 @@ graph TD
 - Cache embedding for subsequent stages
 
 **3. Iterative Search for Distinct Items**
-- Goal: Find 10 distinct ItemIDs above similarity threshold
+- Goal: Find 5 distinct ItemIDs above similarity threshold
 - Process:
-  1. Search for 50 candidates
+  1. Search for 25 candidates
   2. Filter by similarity threshold (0.75)
   3. Keep highest-scoring document per ItemID
-  4. If < 10 distinct items found, search again excluding found ItemIDs
-  5. Repeat until 10 distinct items or no more candidates
+  4. If < 5 distinct items found, search again excluding found ItemIDs
+  5. Repeat until 5 distinct items or no more candidates
 
 **4. Manufacturer Name Cleaning**
 - If SDP connection provided, load manufacturer mapping
@@ -306,12 +306,12 @@ graph TD
 - Cache for FINETUNED_LLM stage
 
 **6. Weight Calculation**
-- For each result, calculate: `weight = exp(10 * (score - 0.85))`
+- For each result, calculate: `weight = exp(10 * (score - 0.55))`
 - Example weights:
-  - Score 0.95: weight = exp(10 * 0.10) = 2.72
-  - Score 0.90: weight = exp(10 * 0.05) = 1.65
-  - Score 0.85: weight = exp(10 * 0.00) = 1.00
-  - Score 0.80: weight = exp(10 * -0.05) = 0.61
+  - Score 0.95: weight = exp(10 * 0.40) = 54.60
+  - Score 0.90: weight = exp(10 * 0.35) = 33.12
+  - Score 0.85: weight = exp(10 * 0.30) = 20.09
+  - Score 0.80: weight = exp(10 * 0.25) = 12.18
 
 **7. Manufacturer Processing**
 - Group results by manufacturer name
@@ -320,7 +320,7 @@ graph TD
   - Get max similarity score among those results
   - Calculate: `confidence = max_score * (group_weight / total_weight) * 100`
 - Select manufacturer with highest confidence
-- Apply single match factor (1.1) if only one result
+- Apply single match factor (0.95) if only one result
 - Return if confidence > 50
 
 **8. UNSPSC Processing**
@@ -334,7 +334,7 @@ graph TD
   - Get max similarity score
   - Calculate: `confidence = max_score * (variant_weight / total_weight) * 100`
 - Select best variant using hierarchical rules
-- Apply single match factor (1.1) if only one result
+- Apply single match factor (0.95) if only one result
 - Return if confidence > 50
 
 ### Confidence Calculation Formula
@@ -352,67 +352,65 @@ confidence = max_search_score * (sum_of_weights_for_variant / total_weight) * 10
 **Single Match Adjustment:**
 ```
 if only_one_result:
-    confidence *= 1.1
+    confidence *= 0.95  # 0.95 = 5% penalty
 ```
 
 **Example Calculation:**
 
-Given 3 search results:
-- Result 1: Score 0.92, MfrName "THOMAS & BETTS", UNSPSC "39131711"
-- Result 2: Score 0.88, MfrName "THOMAS & BETTS", UNSPSC "39131711"
-- Result 3: Score 0.82, MfrName "ABB", UNSPSC "39121420"
+**Parameters:**
+- `mid_point`: 0.55
+- `exp_factor`: 10
 
-Weights:
-- Result 1: exp(10 * (0.92 - 0.85)) = exp(0.70) = 2.01
-- Result 2: exp(10 * (0.88 - 0.85)) = exp(0.30) = 1.35
-- Result 3: exp(10 * (0.82 - 0.85)) = exp(-0.30) = 0.74
-- Total weight: 4.10
+**Input Results:**
+- Result 1: Score 0.92, MfrName "THOMAS & BETTS"
+- Result 2: Score 0.88, MfrName "THOMAS & BETTS"
+- Result 3: Score 0.82, MfrName "ABB"
 
-Manufacturer "THOMAS & BETTS":
-- Group weight: 2.01 + 1.35 = 3.36
-- Max score: 0.92
-- Confidence: 0.92 * (3.36 / 4.10) * 100 = 75.4
+**Weight Calculation:**
+- Formula: `weight = exp(10 * (score - 0.55))`
+- Result 1: `exp(10 * 0.37) = exp(3.7) ≈ 40.45`
+- Result 2: `exp(10 * 0.33) = exp(3.3) ≈ 27.11`
+- Result 3: `exp(10 * 0.27) = exp(2.7) ≈ 14.88`
+- **Total Weight**: `40.45 + 27.11 + 14.88 = 82.44`
 
-Manufacturer "ABB":
-- Group weight: 0.74
-- Max score: 0.82
-- Confidence: 0.82 * (0.74 / 4.10) * 100 = 14.8
+**Manufacturer "THOMAS & BETTS":**
+- Group Weight: `40.45 + 27.11 = 67.56`
+- Max Score: 0.92
+- Confidence: `0.92 * (67.56 / 82.44) * 100`
+- Calculation: `0.92 * 0.8195 * 100 ≈ 75.4`
+- **Final Result**: **75**
 
-Result: "THOMAS & BETTS" with confidence 75
+**Manufacturer "ABB":**
+- Group Weight: `14.88`
+- Max Score: 0.82
+- Confidence: `0.82 * (14.88 / 82.44) * 100`
+- Calculation: `0.82 * 0.1805 * 100 ≈ 14.8`
+- **Final Result**: **15**
 
 ### UNSPSC Hierarchy Selection Rules
 
-The stage uses sophisticated rules to select the best UNSPSC level:
+The stage iterates through a list of confidence thresholds (`[90, 80, 70, 60]`) to select the best UNSPSC level (Commodity, Class, or Family). For each threshold level, it applies the following logic:
 
-**Rule 1: Check Commodity Level (Most Specific)**
-- If any commodity-level UNSPSC has confidence ≥ 70, choose the highest
-- Example: "39131711" with confidence 75 → Selected
+**1. Check Commodity Level (Most Specific)**
+- Does any Commodity-level variant have a confidence score ≥ Current Threshold?
+- **If Yes**: Select the highest scoring Commodity variant immediately.
 
-**Rule 2: Check Class Level (Medium Specific)**
-- If no commodity meets threshold, check class level
-- If class-level UNSPSC has confidence ≥ 60:
-  - Compare with best commodity
-  - If class is NOT significantly better (< 15% higher), use commodity
-  - Otherwise use class
-- Example: Class "39131700" confidence 65, Commodity "39131711" confidence 58
-  - Delta: 65 - 58 = 7
-  - Required delta: 58 * 0.15 = 8.7
-  - 7 < 8.7, so use commodity "39131711"
+**2. Check Class Level (Medium Specific)**
+- Does any Class-level variant have a confidence score ≥ Current Threshold?
+- **If Yes**: Compare it with the best available Commodity variant (regardless of threshold).
+- **Selection Logic**:
+  - Calculate Delta: `Class Score - Best Commodity Score`
+  - Required Delta: `Best Commodity Score * generic_delta_percentage (10%)`
+  - If `Delta < Required Delta`: Prefer **Commodity** (specificity wins).
+  - Otherwise: Prefer **Class** (significant confidence gap justifies generic selection).
 
-**Rule 3: Check Family Level (Least Specific)**
-- If no class meets threshold, check family level
-- If family-level UNSPSC has confidence ≥ 50:
-  - Compare with best higher level (class or commodity)
-  - If family is NOT significantly better (< 15% higher), use higher level
-  - Otherwise use family
-- Example: Family "39130000" confidence 55, Class "39131700" confidence 45
-  - Delta: 55 - 45 = 10
-  - Required delta: 45 * 0.15 = 6.75
-  - 10 > 6.75, so use family "39130000"
+**3. Check Family Level (Least Specific)**
+- Does any Family-level variant have a confidence score ≥ Current Threshold?
+- **If Yes**: Compare it with the best available higher-level variant (Class or Commodity).
+- **Selection Logic**: Apply the same Delta check (10%). Only choose Family if it is significantly more confident than the specific options.
 
-**Rule 4: Fallback to Highest Confidence**
-- If no level meets any threshold, choose variant with highest confidence
-- Regardless of hierarchy level
+**Fallback:**
+- If the loop completes without selecting a variant (no level met any threshold), the system selects the variant with the absolute highest confidence score, regardless of hierarchy level.
 
 **Rationale:**
 - Prefer specific codes when confident
@@ -421,22 +419,22 @@ The stage uses sophisticated rules to select the best UNSPSC level:
 
 ### Single Match Handling
 
-When only one distinct item is found:
+When only one distinct item is found in the search results, special logic applies to prevent over-confidence in isolated matches.
 
 **Special Threshold:**
-- Must have similarity ≥ 0.80 (80%)
-- If below, return no results
-- Prevents low-quality single matches
+- The single result must have a raw similarity score ≥ **0.80 (80%)**.
+- If below this threshold, the result is discarded, and the stage returns no match.
 
-**Confidence Boost:**
-- Multiply confidence by 1.1 (10% boost)
-- Rationale: Single match indicates unique/rare item
-- Higher confidence justified
+**Confidence Adjustment:**
+- **Factor**: `0.95` (Penalty).
+- **Logic**: `Final Confidence = (Search Score * 100) * 0.95`.
+- **Rationale**: A single match lacks corroboration from other data points. A slight penalty (5%) is applied to reflect this lack of consensus.
 
 **Example:**
-- Single result with score 0.88
-- Manufacturer confidence: 75
-- After boost: 75 * 1.1 = 82.5 → 83
+- **Input**: Single result found with Similarity Score **0.88**.
+- **Base Confidence**: `0.88 * 100 = 88` (Since it is the only result, it holds 100% of the weight).
+- **Adjustment**: `88 * 0.95 = 83.6`.
+- **Final Confidence**: **84**.
 
 ## Dependencies
 
@@ -506,35 +504,33 @@ Description: "T&B 425 1-1/4 INSULATING SLEEVE"
 **Processing:**
 
 1. **Embedding Generation:**
-   - Generate 1536-dimension vector
+   - Generate 1536-dimension vector.
 
 2. **Search Results (Top 3 of 10):**
-   - ItemID 12345: Score 0.92, Mfr "T&B", UNSPSC "39131711", Desc "1-1/4 Inch Insuliner Sleeve"
-   - ItemID 12346: Score 0.88, Mfr "THOMAS AND BETTS", UNSPSC "39131711", Desc "Insulating Sleeve 1.25 Inch"
-   - ItemID 12347: Score 0.85, Mfr "THOMAS & BETTS", UNSPSC "39131711", Desc "Nylon Insulating Bushing"
+   - ItemID 1: Score 0.92, Mfr "T&B", UNSPSC "39131711"
+   - ItemID 2: Score 0.88, Mfr "THOMAS AND BETTS", UNSPSC "39131711"
+   - ItemID 3: Score 0.85, Mfr "THOMAS & BETTS", UNSPSC "39131711"
 
 3. **Manufacturer Cleaning:**
-   - "T&B" → "THOMAS & BETTS"
-   - "THOMAS AND BETTS" → "THOMAS & BETTS"
-   - IsMfrClean = true
+   - All map to "THOMAS & BETTS". `IsMfrClean = true`.
 
 4. **Weight Calculation:**
-   - Result 1: exp(10 * (0.92 - 0.85)) = 2.01
-   - Result 2: exp(10 * (0.88 - 0.85)) = 1.35
-   - Result 3: exp(10 * (0.85 - 0.85)) = 1.00
-   - Total: 4.36
+   - Formula: `weight = exp(10 * (score - 0.55))`
+   - Result 1: `exp(3.7) ≈ 40.45`
+   - Result 2: `exp(3.3) ≈ 27.11`
+   - Result 3: `exp(3.0) ≈ 20.09`
+   - **Total Weight**: `87.65`
 
 5. **Manufacturer Processing:**
-   - "THOMAS & BETTS": All 3 results
-   - Group weight: 4.36
-   - Max score: 0.92
-   - Confidence: 0.92 * (4.36 / 4.36) * 100 = 92
+   - "THOMAS & BETTS": All 3 results.
+   - Group Weight: `87.65`.
+   - Max Score: `0.92`.
+   - Confidence: `0.92 * (87.65 / 87.65) * 100 = 92`.
 
 6. **UNSPSC Processing:**
-   - All results have "39131711"
-   - Commodity level confidence: 92
-   - Meets threshold (≥ 70)
-   - Selected: "39131711"
+   - All results have "39131711".
+   - Confidence: `92`.
+   - Meets threshold (≥ 70), selected.
 
 **Output:**
 ```json
@@ -556,27 +552,38 @@ Description: "1-1/4 INSULATING SLEEVE"
 ```
 
 **Search Results:**
-- ItemID 12345: Score 0.88, Mfr "THOMAS & BETTS", UNSPSC "39131711"
-- ItemID 23456: Score 0.85, Mfr "ABB", UNSPSC "39131711"
-- ItemID 34567: Score 0.82, Mfr "EATON", UNSPSC "39131711"
+- ItemID 1: Score 0.88, Mfr "THOMAS & BETTS", UNSPSC "39131711"
+- ItemID 2: Score 0.85, Mfr "ABB", UNSPSC "39131711"
+- ItemID 3: Score 0.82, Mfr "EATON", UNSPSC "39131711"
 
 **Weight Calculation:**
-- Result 1: exp(10 * 0.03) = 1.35
-- Result 2: exp(10 * 0.00) = 1.00
-- Result 3: exp(10 * -0.03) = 0.74
-- Total: 3.09
+- Result 1: `exp(10 * (0.88 - 0.55)) = exp(3.3) ≈ 27.11`
+- Result 2: `exp(10 * (0.85 - 0.55)) = exp(3.0) ≈ 20.09`
+- Result 3: `exp(10 * (0.82 - 0.55)) = exp(2.7) ≈ 14.88`
+- **Total Weight**: `62.08`
 
 **Manufacturer Processing:**
-- "THOMAS & BETTS": weight 1.35, max score 0.88, confidence = 0.88 * (1.35/3.09) * 100 = 38
-- "ABB": weight 1.00, max score 0.85, confidence = 0.85 * (1.00/3.09) * 100 = 28
-- "EATON": weight 0.74, max score 0.82, confidence = 0.82 * (0.74/3.09) * 100 = 20
+- **THOMAS & BETTS**:
+  - Weight: 27.11
+  - Max Score: 0.88
+  - Confidence: `0.88 * (27.11 / 62.08) * 100 ≈ 38`
+- **ABB**:
+  - Weight: 20.09
+  - Max Score: 0.85
+  - Confidence: `0.85 * (20.09 / 62.08) * 100 ≈ 28`
+- **EATON**:
+  - Weight: 14.88
+  - Max Score: 0.82
+  - Confidence: `0.82 * (14.88 / 62.08) * 100 ≈ 20`
 
-All below threshold (50), no manufacturer returned.
+*Result*: All below threshold (50), no manufacturer returned.
 
 **UNSPSC Processing:**
-- All have "39131711"
-- Confidence: 0.88 * (3.09/3.09) * 100 = 88
-- Meets threshold, selected
+- All have "39131711".
+- Group Weight: `62.08` (100% of total).
+- Max Score: `0.88`.
+- Confidence: `88`.
+- Meets threshold, selected.
 
 **Output:**
 ```json
@@ -595,38 +602,40 @@ Description: "ELECTRICAL CONDUIT FITTING"
 ```
 
 **Search Results:**
-- ItemID 11111: Score 0.85, UNSPSC "39131701" (specific fitting)
-- ItemID 22222: Score 0.84, UNSPSC "39131702" (different fitting)
-- ItemID 33333: Score 0.83, UNSPSC "39131703" (another fitting)
-- ItemID 44444: Score 0.82, UNSPSC "39121420" (different category)
+- R1: Score 0.85, UNSPSC "39131701" (specific fitting)
+- R2: Score 0.84, UNSPSC "39131702" (different fitting)
+- R3: Score 0.83, UNSPSC "39131703" (another fitting)
+- R4: Score 0.82, UNSPSC "39121420" (different category)
 
-**UNSPSC Variants Generated:**
-- "39131701", "39131700", "39130000"
-- "39131702", "39131700", "39130000"
-- "39131703", "39131700", "39130000"
-- "39121420", "39121400", "39120000"
+**Weight Calculation:**
+- R1: `exp(3.0) ≈ 20.09`
+- R2: `exp(2.9) ≈ 18.17`
+- R3: `exp(2.8) ≈ 16.44`
+- R4: `exp(2.7) ≈ 14.88`
+- **Total Weight**: `69.58`
 
 **Confidence Calculation:**
-- Commodity "39131701": 0.85 * (weight/total) * 100 = 45 (below 70)
-- Commodity "39131702": 0.84 * (weight/total) * 100 = 42 (below 70)
-- Class "39131700": Matches first 3 results, confidence = 72 (≥ 60)
-- Family "39130000": Matches first 3 results, confidence = 72 (≥ 50)
+- **Commodity "39131701"**:
+  - Weight: 20.09
+  - Max Score: 0.85
+  - Confidence: `0.85 * (20.09 / 69.58) * 100 ≈ 25` (Below 70 threshold)
+- **Class "39131700"**:
+  - Matches R1, R2, R3.
+  - Weight: `20.09 + 18.17 + 16.44 = 54.7`
+  - Max Score: 0.85
+  - Confidence: `0.85 * (54.7 / 69.58) * 100 ≈ 67` (Above 60 threshold)
 
 **Selection Logic:**
-- No commodity meets threshold (70)
-- Class "39131700" meets threshold (60)
-- Best commodity confidence: 45
-- Class confidence: 72
-- Delta: 72 - 45 = 27
-- Required delta: 45 * 0.15 = 6.75
-- 27 > 6.75, so class is significantly better
-- Selected: "39131700"
+- Best Commodity Confidence: 25.
+- Best Class Confidence: 67.
+- **Rule**: Class (67) is significantly better than Commodity (25).
+- **Result**: Select Class "39131700".
 
 **Output:**
 ```json
 {
   "UNSPSC": "39131700",
-  "UNSPSCConfidenceScore": 72,
+  "UNSPSCConfidenceScore": 67,
   "description": "electrical conduit fitting"
 }
 ```
@@ -639,12 +648,12 @@ Description: "RANDOM ELECTRICAL ITEM"
 ```
 
 **Search Results:**
-- ItemID 99999: Score 0.76, Mfr "GENERIC", UNSPSC "39000000"
+- ItemID 99: Score 0.76, Mfr "GENERIC", UNSPSC "39000000"
 
 **Single Match Check:**
-- Only 1 result found
-- Score 0.76 < 0.80 (single_match_similarity_threshold)
-- Rejected
+- Only 1 result found.
+- Threshold Check: `0.76 < 0.80` (single_match_similarity_threshold).
+- **Action**: Result rejected.
 
 **Output:**
 ```json
@@ -659,26 +668,27 @@ Description: "THOMAS & BETTS CONDUIT CONNECTOR"
 ```
 
 **Search Results (Top 5):**
-- ItemID 1: Score 0.92, Mfr "THOMAS & BETTS", UNSPSC "39131705", Part "LT50"
-- ItemID 2: Score 0.90, Mfr "THOMAS & BETTS", UNSPSC "39131705", Part "LT75"
-- ItemID 3: Score 0.88, Mfr "THOMAS & BETTS", UNSPSC "39131706", Part "LT100"
-- ItemID 4: Score 0.86, Mfr "ABB", UNSPSC "39131705", Part "TC50"
-- ItemID 5: Score 0.84, Mfr "EATON", UNSPSC "39131707", Part "EC50"
+- 1: Score 0.92, Mfr "T&B", UNSPSC "39131705"
+- 2: Score 0.90, Mfr "T&B", UNSPSC "39131705" (Duplicate Mfr+UNSPSC)
+- 3: Score 0.88, Mfr "T&B", UNSPSC "39131706"
+- 4: Score 0.86, Mfr "ABB", UNSPSC "39131705"
+- 5: Score 0.84, Mfr "EATON", UNSPSC "39131707"
 
 **RAG Context Filtering:**
-1. Filter by similarity ≥ 0.85: Keep first 4 results
-2. Deduplicate by Mfr + UNSPSC:
-   - (THOMAS & BETTS, 39131705): Keep ItemID 1
-   - (THOMAS & BETTS, 39131706): Keep ItemID 3
-   - (ABB, 39131705): Keep ItemID 4
-3. Limit to 3: Keep ItemIDs 1, 3, 4
+1. **Similarity Check (≥ 0.85)**: Items 1, 2, 3, 4 pass. Item 5 (0.84) is dropped.
+2. **Deduplication (Mfr + UNSPSC)**:
+   - Item 1: Keep.
+   - Item 2: Drop (Same Mfr/UNSPSC as Item 1).
+   - Item 3: Keep (Different UNSPSC).
+   - Item 4: Keep (Different Mfr).
+3. **Limit**: Top 3 items retained.
 
 **Cached for RAG:**
 ```json
 [
   {
     "ItemID": 1,
-    "MfrName": "THOMAS & BETTS",
+    "MfrName": "T&B",
     "MfrPartNum": "LT50",
     "UNSPSC": "39131705",
     "ItemDescription": "Liquidtight Connector 1/2 Inch",
@@ -686,7 +696,7 @@ Description: "THOMAS & BETTS CONDUIT CONNECTOR"
   },
   {
     "ItemID": 3,
-    "MfrName": "THOMAS & BETTS",
+    "MfrName": "T&B",
     "MfrPartNum": "LT100",
     "UNSPSC": "39131706",
     "ItemDescription": "Liquidtight Connector 1 Inch",
@@ -708,26 +718,28 @@ These examples will be used by FINETUNED_LLM stage as context.
 ## Performance Characteristics
 
 ### Throughput
-- ~100-200 descriptions per second
-- Bottleneck: Embedding generation (Azure OpenAI rate limits)
-- Search operations are fast (< 100ms per query)
+- **~10-30 descriptions per second** (per instance, assuming asynchronous concurrency).
+- **Bottlenecks**:
+  - **Azure OpenAI Rate Limits**: Token-per-minute (TPM) quotas for embedding generation.
+  - **Azure AI Search Latency**: Vector search queries, especially with filtering, can impact throughput.
 
-### Latency
-- Embedding generation: 200-500ms
-- Search iterations: 100-300ms total
-- Weight calculation: < 10ms
-- Total: 300-800ms per description
+### Latency Breakdown
+- **Embedding Generation**: 200-500ms (External API call).
+- **Search Operations**: 200ms - 1500ms.
+  - *Note*: The stage uses an iterative search strategy. If the initial results don't yield enough distinct items, it executes additional queries with exclusion filters, increasing total latency.
+- **Processing (Weights/Scoring)**: < 20ms (CPU bound).
+- **Total Latency**: **~0.5 - 2.0 seconds per description**.
 
 ### Accuracy
-- High similarity matches (> 0.90): Very accurate
-- Medium similarity (0.80-0.90): Good accuracy
-- Low similarity (0.75-0.80): Moderate accuracy
-- Below threshold (< 0.75): Filtered out
+- **High Similarity Matches (> 0.90)**: Very accurate; typically yields correct Manufacturer and UNSPSC.
+- **Medium Similarity (0.80-0.90)**: Good accuracy; useful for categorization but requires validation.
+- **Low Similarity (0.75-0.80)**: Moderate accuracy; often indicates a generic or ambiguous description.
+- **Below Threshold (< 0.75)**: Filtered out to prevent noise.
 
 ### Resource Usage
-- Memory: Minimal (< 50 MB per request)
-- CPU: Low (mostly I/O bound)
-- Network: Moderate (API calls to Azure OpenAI and Azure AI Search)
+- **Memory**: Moderate (~50-100 MB). Primarily determines queue depth for async tasks.
+- **CPU**: Low. The process is I/O bound, waiting for external API responses.
+- **Network**: Moderate to High. Continuous outbound traffic to Azure OpenAI (embeddings) and Azure AI Search (potentially multiple queries per item).
 
 ## Monitoring and Troubleshooting
 

@@ -1,7 +1,7 @@
 # Solution Overview
 
-**Last Updated:** 2025-12-17  
-**Audience:** Business Analysts, QA Professionals  
+**Last Updated:** 2025-12-17
+**Author:** Kirill Levtov
 **Related:** [Indexer](02-indexer.md) | [SQL Writer](03-sql-writer.md) | [Processing Stages](04-complete-match-stage.md)
 
 ## Overview
@@ -48,7 +48,7 @@ graph TB
     J[Indexer] --> K[Azure AI Search]
     K --> E2
     I --> E2
-    
+
     style A fill:#e1f5ff
     style B fill:#e1f5ff
     style C fill:#fff4e1
@@ -137,7 +137,7 @@ sequenceDiagram
    - Invoice Extractor retrieves invoice detail records from SQL database
 
 2. **Pre-Processing**
-   - System checks if AKS part number or UPC already exists in database
+   - System checks if ASK part number or UPC already exists in database
    - If found, processing exits early with status "RC-RPA"
    - Otherwise, processing continues to pipeline
 
@@ -217,11 +217,11 @@ The default pipeline (CASE_0) includes the following stages in order:
 4. **SEMANTIC_SEARCH - SEMANTIC_SEARCH**
    - Uses vector embeddings to find similar products in Azure AI Search
    - Extracts manufacturer name and UNSPSC code
-   - Hybrid search combines vector similarity and keyword matching
+   - Vector search leveraging semantic similarity of product descriptions
 
 5. **COMPLETE_MATCH - COMPLETE_MATCH**
-   - Performs exact matching against SQL product database
-   - Extracts manufacturer name, part number, UNSPSC, UPC
+   - Performs exact matching against Azure AI Search index and SQL product database
+   - Extracts manufacturer name, part number, UNSPSC, UPC, AK part number
    - Includes fallback logic for manufacturer-only matching
 
 6. **CONTEXT_VALIDATOR - CONTEXT_VALIDATOR**
@@ -287,28 +287,38 @@ This cache allows stages to:
 
 ## Final Output Consolidation
 
-### Confidence-Based Selection
+### Result Selection Logic
 
-The system consolidates results from all stages by:
+The system determines the final output through a hierarchical selection process that prioritizes data consistency over mixing fields from different stages:
 
-1. **Field-by-Field Comparison**
-   - For each field (manufacturer_name, part_number, unspsc), compare confidence scores across all stages
-   - Select the value with the highest confidence score
-   - Record which stage provided the final value
+1. **Stage Selection**
+   - The system evaluates processing stages sequentially.
+   - If a stage's results meet the configured confidence thresholds (after boosting), that stage is selected as the final source.
+   - If no stage meets the thresholds, the system compares the average confidence scores of required fields across all valid stages and selects the highest-scoring **stage**.
+   - **Consistency**: The system prioritizes taking the core product identity (Manufacturer and Part Number) from a single stage to ensure the data represents a coherent product entity. It avoids mixing Manufacturer from one stage with a Part Number from another unless specific enrichment rules apply.
 
 2. **Confidence Boosting**
-   - If RPA-provided value matches AI-extracted value, boost confidence score
-   - Indicates agreement between multiple data sources
+   - If the value extracted by a stage matches a value from a trusted source (such as RPA input or a previous high-confidence stage), the confidence score for that field is boosted.
+   - This boosting mechanism reflects the higher certainty derived from agreement between independent data sources.
 
-3. **Threshold Evaluation**
-   - Compare final confidence scores against configured thresholds
-   - Determine invoice line status:
-     - **RC-AI**: All required fields meet or exceed thresholds
-     - **DS1**: One or more fields below threshold, requires manual review
+3. **Data Enrichment**
+   - Once a winning stage is selected, the system may enrich it with missing data points from other stages.
+   - **Example**: If the selected stage identified the Manufacturer and Part Number but failed to find a UNSPSC code or UPC, the system can propagate these specific values from another stage if they are available.
 
-4. **Verification Flag**
-   - Set to 'Y' if data is verified (high confidence, exact match)
-   - Set to 'N' if data requires review (low confidence, no exact match, LOT/GENERIC items)
+4. **Threshold Evaluation**
+   - The final consolidated confidence scores are compared against configured thresholds.
+   - **RC-AI**: All required fields meet or exceed thresholds.
+   - **DS1**: One or more required fields are below the threshold, requiring manual review.
+
+### Verification Flag Logic
+
+The `is_verified_flag` indicates a high-certainty match against a trusted master data source. This flag is set to 'Y' (True) only when **all** of the following conditions are met:
+
+1.  **Trusted Data Source**: The product was matched against a verified dataset, specifically **IDEA** or **Trade Service (TRD_SVC)**. Matches against the general invoice history (pipeline data) do not qualify for verification.
+2.  **Explicit Match**: Both the Manufacturer Name and Part Number were explicitly identified in the input description and matched to the database record. Matches based on Part Number alone (where the manufacturer is inferred implicitly) do not qualify.
+3.  **Uniqueness**: The system found exactly one unique combination of Part Number and Manufacturer Name. If multiple potential candidates exist (ambiguity), the flag remains 'N'.
+
+This rigorous logic ensures that `is_verified_flag = 'Y'` represents a definitive, unambiguous link to a master catalog item.
 
 ### Output Fields
 
@@ -319,7 +329,7 @@ The final output includes:
 - `part_number`: Extracted part number
 - `unspsc`: UNSPSC classification code
 - `upc`: UPC barcode (if found)
-- `aks_part_number`: AKS internal part number (if found)
+- `aks_part_number`: ASK internal part number (if found)
 - `description`: Cleaned description text
 
 **Confidence Fields:**
@@ -513,12 +523,26 @@ This file defines minimum confidence scores required for each field at each stag
 - **At or Above Threshold**: Field value reliable, can stop early if all required fields meet thresholds
 - **Final Status Determination**: If all required fields meet thresholds from any stage, status = RC-AI; otherwise status = DS1
 
-**Example Scenario:**
-- COMPLETE_MATCH extracts manufacturer with confidence 85 (above 70 threshold) ✓
-- COMPLETE_MATCH extracts part number with confidence 65 (below 71 threshold) ✗
-- Pipeline continues to FINETUNED_LLM to improve part number confidence
-- FINETUNED_LLM extracts part number with confidence 100 (above 100 threshold) ✓
-- All fields now meet thresholds, final status = RC-AI
+**Example Scenario: Confidence Consolidation through Agreement**
+
+1. **COMPLETE_MATCH Stage**:
+   - Identifies: Manufacturer "EATON", Part Number "BR120".
+   - Confidence: Manufacturer **95** (High), Part Number **65** (Low).
+   - **Result**: Thresholds not met (Part Number 65 < 71). Pipeline continues.
+
+2. **FINETUNED_LLM Stage**:
+   - Identifies: Manufacturer "EATON", Part Number "BR120".
+   - Confidence: Manufacturer 80 (Lower), Part Number **98** (High).
+   - **Evaluation**: System detects that this stage identified the **same product** as the previous stage.
+
+3. **Consolidation**:
+   - Because the stages agree on the product identity, the system selects the highest confidence score for each field:
+     - Manufacturer: Takes **95** (from COMPLETE_MATCH).
+     - Part Number: Takes **98** (from FINETUNED_LLM).
+   - **Final Result**: The consolidated result (Mfr: 95, Part: 98) now meets all configured thresholds.
+   - **Status**: RC-AI (Ready for Consumption), and the pipeline stops early.
+
+*Note: If FINETUNED_LLM had identified a **different** product (e.g., "SIEMENS", "Q120"), the scores would NOT be combined. The new result would be evaluated independently against the thresholds.*
 
 ### confidences.yaml - Confidence Scoring Rules
 
@@ -816,7 +840,7 @@ graph LR
 ### Stage Dependencies
 
 - **SEMANTIC_SEARCH** depends on **Indexer** having populated Azure AI Search
-- **COMPLETE_MATCH** depends on **SQL Database** containing product data
+- **COMPLETE_MATCH** depends on **Azure AI Search index** or **SQL Database** containing product data
 - **CONTEXT_VALIDATOR** depends on **COMPLETE_MATCH** producing results to validate
 - **SQL Writer** depends on **Cosmos DB** containing completed processing results
 - All extraction stages depend on **CLASSIFICATION** to determine if extraction is needed
@@ -928,47 +952,40 @@ Manufacturer from RPA PO Mapping: "ACME ELECTRIC"
 2. **CLASSIFICATION - LOT_CLASSIFIER**
    - Category: LOT
    - Confidence: 100
-   - **Special Case CASE_2 Applied**: Skip CONTEXT_VALIDATOR, FINETUNED_LLM, WEB_SEARCH
+   - **Special Logic Applied**: System detects Manufacturer "ACME ELECTRIC" provided by RPA PO Mapping.
+   - **Action**: Use RPA provided manufacturer.
 
-3. **SEMANTIC_SEARCH - SEMANTIC_SEARCH**
-   - Manufacturer: ACME ELECTRIC
-   - UNSPSC: (not applicable for LOT)
-   - Confidence: Manufacturer 85
-
-4. **COMPLETE_MATCH - COMPLETE_MATCH**
-   - Manufacturer: ACME ELECTRIC (from RPA PO mapping)
-   - Confidence: Manufacturer 100
-
-**Pipeline Stops Here** - LOT special case skips remaining stages
+**Pipeline Stops Here** - Extraction stages are skipped because a trusted manufacturer was already provided for the LOT item.
 
 **Final Output:**
-- Manufacturer: ACME ELECTRIC (confidence 100, from RPA PO mapping)
+- Manufacturer: ACME ELECTRIC (confidence 100, source: RPA)
 - Part Number: Not extracted (LOT items don't have single part numbers)
 - UNSPSC: Not extracted (LOT items represent multiple products)
 - Status: RC-AI
 - Verification Flag: N (LOT items always require review)
 
-### Example 4: Complex Description Requiring Web Search
+### Example 4: Existing Database Match (Early Exit)
 
 **Input:**
 ```
 Invoice Description: "SLTITE 034 UA 100B 3/4IN UL LIQUATITE"
 Manufacturer from RPA: "SLTITE"
 Part Number from RPA: "034 UA 100B"
-AKS Part Number: "AK10433053" (already exists in database)
+ASK Part Number: "AK10433053" (already exists in database)
 ```
 
 **Processing Flow:**
 
 **Pre-Processing Check:**
-- AKS Part Number "AK10433053" found in database
-- **Processing Exits Early** with status RC-RPA
-- No AI stages run
+- System validates `ASK Part Number` or `UPC` against the database.
+- ASK Part Number "AK10433053" is found in the trainable table.
+- **Processing Exits Early** with status **RC-RPA**.
+- No AI stages (Classification, Extraction, etc.) are executed.
 
 **Final Output:**
-- Status: RC-RPA (RPA already found the product)
+- Status: RC-RPA (RPA provided a known, valid product identifier)
 - Message: "ASK number is already present. Exiting the AI process..."
-- No AI extraction performed
+- No AI extraction performed.
 
 ### Example 5: Generic Item (Modified Pipeline)
 
@@ -981,10 +998,12 @@ Category from RPA: GENERIC (Category ID: 1.2)
 **Processing Flow:**
 
 1. **CLASSIFICATION - DESCRIPTION_CLASSIFIER**
-   - Category: MATERIAL
+   - Category: MATERIAL (Generic)
    - Confidence: 100
 
-2. **Special Case CASE_1 Applied**: Skip COMPLETE_MATCH stage
+2. **Special Case CASE_1 Applied**:
+   - **Action**: Skips COMPLETE_MATCH stage.
+   - **Configuration**: FINETUNED_LLM switches to UNSPSC-only extraction mode.
 
 3. **SEMANTIC_SEARCH - SEMANTIC_SEARCH**
    - Manufacturer: GENERIC WIRE
@@ -992,10 +1011,10 @@ Category from RPA: GENERIC (Category ID: 1.2)
    - Confidence: Manufacturer 70, UNSPSC 80
 
 4. **FINETUNED_LLM - FINETUNED_LLM**
-   - Manufacturer: GENERIC WIRE
-   - Part Number: Not extracted (generic items don't have specific part numbers)
+   - **Mode**: UNSPSC Extraction Only
    - UNSPSC: 26111701
-   - Confidence: Manufacturer 85, UNSPSC 90
+   - Confidence: UNSPSC 90
+   - *Note: Manufacturer and Part Number are not extracted in this stage for Case 1.*
 
 5. **EXTRACTION_WITH_LLM_AND_WEBSEARCH - AZURE_AI_AGENT_WITH_BING_SEARCH**
    - Manufacturer: GENERIC WIRE
@@ -1003,22 +1022,32 @@ Category from RPA: GENERIC (Category ID: 1.2)
    - Confidence: Manufacturer 80, UNSPSC 85
 
 **Final Output:**
-- Manufacturer: GENERIC WIRE (confidence 85, from FINETUNED_LLM)
+- Manufacturer: GENERIC WIRE (confidence 80, from **WEB_SEARCH**)
 - Part Number: Not extracted (generic items don't have part numbers)
-- UNSPSC: 26111701 (confidence 90, from FINETUNED_LLM)
-- Status: DS1 (requires review due to generic nature)
-- Verification Flag: N (generic items always require review)
+- UNSPSC: 26111701 (confidence 90, from **FINETUNED_LLM**)
+- Status: DS1 (Manufacturer confidence 80 is below the 95 threshold)
+- Verification Flag: N (Generic items are forced to Unverified)
 
-## Confidence Score Progression
+## Confidence Evaluation Strategy
 
-The examples above show how confidence scores evolve through stages:
+The system does not follow a linear progression from low to high confidence. Instead, it treats each stage as an independent extraction engine. High-confidence matches can occur at any point, and the system employs strict rules to ensure the final output represents a single, coherent product entity.
 
-- **Early stages** (SEMANTIC_SEARCH) provide initial estimates with moderate confidence
-- **Middle stages** (COMPLETE_MATCH, FINETUNED_LLM) refine values with higher confidence
-- **Final stage** (WEB_SEARCH) provides verification with highest confidence when successful
-- **Final output** selects the value with highest confidence from any stage
+### Dynamic Pipeline Execution
 
-This multi-stage approach ensures:
-- Fallback values available if later stages fail
-- Continuous improvement of confidence through pipeline
-- Best available data used for final output
+1.  **Early Exit Optimization**
+    *   If an early stage (e.g., **COMPLETE_MATCH**) identifies a product with sufficient confidence to meet all configured thresholds, the pipeline stops immediately.
+    *   Later stages are skipped to save processing time and costs.
+    *   *Example*: An exact database match often yields 100% confidence early in the process, rendering further analysis unnecessary.
+
+2.  **Independent Contribution**
+    *   If early stages do not meet thresholds, later stages provide independent extraction attempts using different techniques (AI models, web browsing).
+    *   A later stage is not guaranteed to have higher confidence; it may return lower scores if the data is ambiguous, or it may find a completely different product.
+
+3.  **Data Integrity & Consensus**
+    *   **Consistency First**: The system strictly avoids mixing data points from different products. It will **not** combine a Manufacturer from one stage with a Part Number from another if they refer to different items.
+    *   **Consolidation by Agreement**: If multiple stages identify the **same** product (matching Manufacturer and Part Number), the system consolidates them by selecting the highest confidence score for each field from the agreeing stages. This "boosting" validates the result through consensus.
+    *   **Conflict Resolution**: If stages identify **different** products, the system evaluates them as distinct candidates. It selects the single stage that yields the highest overall confidence and completeness, ensuring the final record remains accurate and consistent.
+
+This approach ensures:
+*   **Efficiency**: Simple items are processed quickly.
+*   **Accuracy**: The final output represents the system's highest certainty without creating invalid "hybrid" data records.

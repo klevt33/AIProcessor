@@ -1,7 +1,7 @@
 # Indexer - Semantic Search Index Synchronization
 
-**Last Updated:** 2025-12-17  
-**Audience:** Business Analysts, QA Professionals  
+**Last Updated:** 2025-12-23
+**Author:** Kirill Levtov
 **Related:** [Solution Overview](01-solution-overview.md) | [Semantic Search Stage](06-semantic-search-stage.md)
 
 ## Overview
@@ -161,9 +161,9 @@ The search index contains the following fields for each product:
 - `MfrName` (String) - Manufacturer name
 - `MfrPartNum` (String) - Manufacturer part number (original)
 - `MfrPartNumExact` (String) - Part number with separators removed (-, /, .)
-- `MfrPartNumPrefix` (String) - Part number for prefix matching (n-gram indexed)
+- `MfrPartNumPrefix` (String) - Part number for prefix matching (n-gram indexed). **Note:** Currently unused; reserved for future enhancements to support flexible part number searching by prefix.
 - `UPC` (String) - UPC barcode
-- `AKPartNum` (String) - AKS internal part number
+- `AKPartNum` (String) - ASK internal part number
 - `UNSPSC` (String) - UNSPSC classification code
 - `ItemSourceName` (String) - Source of item data
 - `ItemLastModified` (DateTimeOffset) - Last modification timestamp for item
@@ -241,7 +241,7 @@ graph LR
     E --> H
     H --> I[Data Saver]
     I --> J[Azure AI Search]
-    
+
     style A fill:#e8f5e9
     style C fill:#f3e5f5
     style E fill:#fff4e1
@@ -278,6 +278,45 @@ All operations are performed in batches for efficiency:
 - Index reads: Fetch 400 records at a time
 - Embedding calculation: Process 400 descriptions at once
 - Index writes: Upload 400 documents at once
+
+## Updating the Index Schema
+
+When product data requirements change, you must update the Azure AI Search index schema. Because Azure AI Search does not allow most schema modifications to existing fields (like changing a field type), updates often require a full rebuild.
+
+### Required Code Updates
+
+To add or modify fields in the index, follow these steps across the codebase:
+
+1.  **Define the Schema in `semantic_search_indexer.py`**:
+    Update the `create_search_index()` method. Add new fields to the `fields` list using `SimpleField`, `SearchableField`, or `SearchField`.
+    ```python
+    # Example: Adding a new 'Category' field
+    SimpleField(name="Category", type=SearchFieldDataType.String, filterable=True, sortable=True)
+    ```
+
+2.  **Update SQL Data Retrieval**:
+    Ensure the SQL query in `sql_utils.py` (specifically the logic called by `get_all_index_data`) includes the new columns in its `SELECT` statement.
+
+3.  **Map New Fields in `Indexer._queue_create_record`**:
+    Update this method to pull the new value from the SQL record and add it to the document dictionary.
+    ```python
+    doc = {
+        # ... existing fields ...
+        "Category": str(sql_record["Category"]) if sql_record["Category"] is not None else None,
+    }
+    ```
+
+4.  **Update Change Detection in `Indexer._compare_and_update_record`**:
+    If the new field should be updated during incremental syncs, add it to the `doc.update(...)` logic. Determine if the field belongs to "item-level" (triggered by `ItemLastModified`) or "description-level" data.
+
+5.  **Update Utility Selectors in `azure_search_utils.py`**:
+    If the new field needs to be consumed by the pipeline (e.g., in the Semantic Search stage), update the `select_fields` list inside `get_parts_data_from_index`.
+
+### Applying the Changes
+Once the code is updated, deploy the changes and run the indexer with the rebuild flag to recreate the index with the new schema:
+```bash
+python indexer/semantic_search_indexer.py --rebuild
+```
 
 ## Processing Flow
 
@@ -407,6 +446,9 @@ Azure AI Search has rate limits that can be exceeded during large indexing opera
 4. Repeat up to max retries (default: 5)
 5. If still failing after max retries, terminate process
 
+**Context on Delays:**
+When the index is being built or heavily updated, Azure AI Search performs asynchronous background tasks, such as index compression. During this time, the service may report that storage quotas are exceeded. The extended wait time (10 minutes × 5 retries) is designed to allow these background compression tasks to complete, often freeing up enough space for the process to resume successfully without manual intervention.
+
 **Configuration:**
 - `max_quota_retries`: Maximum retry attempts (5)
 - `quota_retry_delay_minutes`: Delay between retries (10 minutes)
@@ -501,13 +543,14 @@ The indexer implements a circuit breaker to prevent cascading failures:
 
 ### Used By
 
-- **SEMANTIC_SEARCH Stage** - Depends on indexer having populated the search index
-- **Invoice Processing Pipeline** - Requires up-to-date index for semantic matching
+- **SEMANTIC_SEARCH Stage** - Depends on indexer having populated the search index for vector similarity
+- **COMPLETE_MATCH Stage** - Can be configured to use the index as its primary data source (default) or as a fallback, replacing direct SQL queries
+- **Invoice Processing Pipeline** - Requires up-to-date index for high-performance matching
 
 ### Execution Schedule
 
 The indexer typically runs as:
-- **Scheduled Job**: Nightly or weekly updates
+- **Scheduled Job**: Nightly updates
 - **Manual Execution**: After bulk data imports
 - **Command Line**: For testing or troubleshooting
 
@@ -674,13 +717,86 @@ Records deleted from index: 0
 Embeddings calculated: 0
 ```
 
+## Search API Usage
+
+The `AzureSearchUtils.search()` method is a versatile wrapper around the Azure SDK, designed to handle various retrieval strategies used throughout the invoice processing pipeline.
+
+### 1. Keyword Search & Filtering
+Used for exact matches (like Part Numbers) or basic text filtering.
+```python
+# Search for a specific manufacturer's parts with a status filter
+results = search_utils.search(
+    query_text="*",
+    filter_expression="MfrName eq 'Schneider Electric' and ItemID gt 5000",
+    select=["ItemID", "MfrPartNum", "ItemDescription"],
+    top=10
+)
+```
+
+### 2. Pure Vector Search
+Used to find items based on semantic similarity when the exact keyword is unknown.
+```python
+# 'vector' is a list of 1536 floats generated by LLM.get_embeddings()
+results = search_utils.search(
+    vector_query={
+        "vector": embedding_vector,
+        "fields": "ItemDescription_vector",
+        "k_nearest_neighbors": 5
+    },
+    select=["ItemID", "ItemDescription"]
+)
+```
+
+### 3. Hybrid Search (Keyword + Vector)
+Combines the precision of keyword matching with the breadth of semantic search. This is the recommended approach for common matching scenarios.
+```python
+results = search_utils.search(
+    query_text="bushing insulation",
+    vector_query={
+        "vector": embedding_vector,
+        "fields": "ItemDescription_vector",
+        "k_nearest_neighbors": 10
+    },
+    select=["ItemID", "MfrPartNum", "ItemDescription"]
+)
+```
+
+### 4. Semantic Search
+The most advanced mode, which uses Azure's L3 re-ranker to sort results based on deep contextual meaning.
+```python
+from azure.search.documents.models import QueryType
+
+results = search_utils.search(
+    query_text="high voltage transformer bushings",
+    query_type=QueryType.SEMANTIC,
+    semantic_configuration_name="semantic-config",
+    top=5
+)
+```
+
+> **Semantic Ranker Billing**
+> The Semantic Ranker is a premium feature billed on a per-query basis. It is not included in the standard hourly price of the Azure AI Search tier.
+>
+> *   **Usage-Based Fee:** Beyond the initial monthly free grant (typically 1,000 queries), additional requests incur a fee (approx. $1.00 USD per 1,000 requests).
+> *   **Billing Triggers:** Charges are only triggered when `query_type` is set to `SEMANTIC` and the query string is not empty.
+> *   **Capacity Management:** Ensure the Azure Search service is set to the "Standard" plan for Semantic Ranker in the Azure Portal to avoid "Quota Exceeded" errors once the free grant is exhausted.
+
+### Key Parameters
+
+| Parameter | Description |
+| :--- | :--- |
+| `select` | List of fields to return. Always limit this to improve performance. |
+| `search_fields` | Limits the text search to specific fields (e.g., `["MfrPartNum"]`). |
+| `include_total_count` | If True, returns a tuple `(DataFrame, int)`. |
+| `vector_filter_mode` | Determines if filters are applied before or after vector search (`PRE_FILTER` is default and recommended). |
+
 ## Performance Characteristics
 
 ### Throughput
 
 **Full Rebuild:**
-- ~125-150 records/second
-- Bottleneck: Embedding calculation (API rate limits)
+- ~100-150 records/second
+- Bottleneck: Saving index data (API rate limits)
 - 500,000 records: 2-3 hours
 
 **Incremental Update:**
@@ -697,8 +813,7 @@ Embeddings calculated: 0
 - Embeddings: 1536 dimensions × 4 bytes × batch size = ~2.5 MB per batch
 
 **CPU:**
-- Moderate usage across 6 threads
-- Spikes during embedding calculation
+- Low to moderate usage across 6 threads
 - Most time spent waiting on I/O
 
 **Network:**
@@ -720,8 +835,7 @@ Embeddings calculated: 0
 
 **Thread Count:**
 - Fixed at 6 threads (5 workers + 1 monitor)
-- More threads wouldn't help (I/O bound)
-- Fewer threads would slow processing
+- **Rationale:** While adding more threads (specifically for saving data) could theoretically increase throughput, it significantly increases the risk of hitting Azure AI Search rate limits. This would require more complex error handling logic. The current configuration balances performance with stability for the current data volume.
 
 ## Monitoring and Troubleshooting
 
@@ -783,3 +897,7 @@ Embeddings calculated: 0
 - Verify final statistics match expectations
 - Check index record count matches SQL count
 - Test search functionality with sample queries
+
+## Future Enhancements
+
+- **Module Refactoring**: The main module `semantic_search_indexer.py` handles multiple responsibilities (reading, processing, embedding, writing). A future refactoring initiative will break this into smaller, single-purpose modules to improve maintainability and testability.

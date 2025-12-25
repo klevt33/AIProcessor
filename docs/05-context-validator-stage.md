@@ -1,14 +1,14 @@
 # CONTEXT_VALIDATOR Stage - Match Validation Logic
 
-**Last Updated:** 2025-12-17  
-**Audience:** Business Analysts, QA Professionals  
+**Last Updated:** 2025-12-19
+**Author:** Kirill Levtov
 **Related:** [Solution Overview](01-solution-overview.md) | [COMPLETE_MATCH Stage](04-complete-match-stage.md) | [SEMANTIC_SEARCH Stage](06-semantic-search-stage.md)
 
 ## Overview
 
 The CONTEXT_VALIDATOR stage validates the contextual relevance of matches found by previous stages (primarily COMPLETE_MATCH). While exact matching can find products with matching part numbers and manufacturers, it cannot determine if the matched product is actually what the invoice line is describing. This stage uses a Large Language Model (LLM) to understand the context and determine if the match is appropriate.
 
-This is a **validation stage** - it doesn't extract new information but judges whether existing matches are contextually correct. If a match is invalidated, subsequent stages can provide alternative results.
+This is a **validation stage** - it doesn't extract new information but judges whether existing matches are contextually correct. It executes **only** when the `COMPLETE_MATCH` stage identifies a potential match that meets or exceeds its configured confidence thresholds. If the exact match result is too weak to trigger a stop, the pipeline skips validation and proceeds directly to subsequent extraction stages. If a match is invalidated, subsequent stages can provide alternative results.
 
 ## Key Concepts
 
@@ -29,23 +29,26 @@ Unlike extraction stages that find new information, validation stages:
 - Use the `is_validation_stage` flag in their results
 
 ### Relationship Types
-The LLM classifies the relationship between the invoice text and matched product:
+The LLM classifies the relationship between the invoice text and matched product into one of five categories:
 
-1. **DIRECT_MATCH**: The invoice describes the matched item exactly
-   - Example: "Dewalt DW745 Table Saw" → Matched: "Dewalt DW745 Table Saw"
+1. **DIRECT_MATCH**: The invoice describes the matched item exactly.
+   - **Example**: "Dewalt DW745 Table Saw" → Matched: "Dewalt DW745 Table Saw"
+   - **Substitution Rule**: If the invoice says "Sub for [Old Item]" and the match is the **New Item**, it is a DIRECT_MATCH.
+   - **UOM Rule**: Differences in packaging (e.g., "Box" vs "Each") are ignored if the core product is the same.
 
-2. **REPLACEMENT_PART**: The invoice item is a component or spare part FOR the matched item
-   - Example: "Blade for Dewalt DW745" → Matched: "Dewalt DW745 Table Saw"
-   - Grammar rule: Look for "for", "fits", "used with", "compatible with"
+2. **REPLACEMENT_PART**: The invoice item is a component, spare part, or repair item intended **FOR** the matched item.
+   - **Example**: "Blade for Dewalt DW745" → Matched: "Dewalt DW745 Table Saw"
+   - **Grammar Rule**: The system looks for directional prepositions like "for", "fits", "used with", or "compatible with".
 
-3. **ACCESSORY_PART**: The invoice item is an optional add-on FOR the matched item
-   - Example: "Case for Dewalt DW745" → Matched: "Dewalt DW745 Table Saw"
+3. **ACCESSORY_PART**: The invoice item is an optional add-on for the matched item.
+   - **Example**: "Carrying Case for Dewalt DW745" → Matched: "Dewalt DW745 Table Saw"
 
-4. **LOT_OR_KIT**: The invoice describes a bundle/kit, but the matched item is only one component
-   - Example: "Saw Kit with Blade and Case" → Matched: "Dewalt DW745 Table Saw"
+4. **LOT_OR_KIT**: The invoice describes a bundle, kit, or assembly, but the matched item is only one component of that group.
+   - **Example**: "Saw Kit with Blade and Case" → Matched: "Dewalt DW745 Table Saw" (The match is incomplete).
 
-5. **UNRELATED**: The match is completely wrong or refers to a different product
-   - Example: "Replacement for Dewalt DW745" → Matched: "Dewalt DW745 Table Saw" (the item being replaced, not the replacement)
+5. **UNRELATED**: The match is incorrect or refers to a different product mentioned in the text (e.g., a reference item).
+   - **Example (Mismatch)**: "3/4 Inch EMT Conduit" → Matched: "3/4 Inch Rigid Conduit" (Different product type).
+   - **Example (Reference)**: "Replacement for Part X" → Matched: "Part X" (The match is the item being replaced, not the item being sold).
 
 
 ### Substitution Rule
@@ -172,8 +175,8 @@ llm_client = self.client_map.get(client_type)
 **Structured Output:**
 ```python
 structured_llm_chain = llm_client.with_structured_output(
-    schema=output_model, 
-    method="function_calling", 
+    schema=output_model,
+    method="function_calling",
     strict=True
 )
 ```
@@ -276,7 +279,7 @@ graph TD
     L --> O
     M --> O
     N --> O
-    
+
     style A fill:#e1f5ff
     style E fill:#fff4e1
     style F fill:#f3e5f5
@@ -287,7 +290,12 @@ graph TD
 
 ### Step-by-Step Processing
 
-**1. Extract Previous Stage Data**
+**1. Trigger Evaluation**
+- The system checks if the `COMPLETE_MATCH` results meet the required confidence thresholds to potentially stop the pipeline.
+- **If Thresholds Met**: The `CONTEXT_VALIDATOR` runs to verify the match before finalizing.
+- **If Thresholds Not Met**: The validator is skipped, and the pipeline continues to the next extraction stage.
+
+**2. Extract Previous Stage Data**
 
 The stage extracts required information from the previous stage (typically COMPLETE_MATCH):
 
@@ -306,7 +314,7 @@ matched_description = prev_details.get("matched_description")
 - `matched_pn`: Part number from the match
 - `matched_description`: Product description from the database
 
-**2. Input Validation**
+**3. Input Validation**
 
 Defensive validation ensures all required fields are present:
 
@@ -324,7 +332,7 @@ if not (original_invoice_text and matched_mfr and matched_pn and matched_descrip
 - Missing fields would lead to incorrect validation
 - Better to fail fast than produce wrong results
 
-**3. Construct Validation Prompt**
+**4. Construct Validation Prompt**
 
 The prompt provides the LLM with:
 - Original invoice text (what the user wrote)
@@ -337,21 +345,21 @@ The prompt provides the LLM with:
 You are a procurement expert verifying if a database match is contextually correct.
 
 Input Invoice Text: "Blade for Dewalt DW745 Table Saw"
-Matched Database Item: Manufacturer="Dewalt", PartNumber="DW745", Description="Dewalt DW745 10-Inch Table Saw"
+Matched Database Item: Manufacturer="DEWALT", PartNumber="DW745", Description="DEWALT DW745 10-INCH TABLE SAW"
 
 Task: Identify the PRIMARY ITEM being sold in the invoice text and determine its relationship to the Matched Database Item.
 
 [Relationship type definitions and rules]
 ```
 
-**4. Call LLM with Structured Output**
+**5. Call LLM with Structured Output**
 
 The stage calls the LLM using Azure OpenAI's structured output feature:
 
 ```python
 validation_result: ValidationResult = await self.llms.get_structured_response(
-    prompt=prompt, 
-    output_model=ValidationResult, 
+    prompt=prompt,
+    output_model=ValidationResult,
     client_type=LLMClientType.CONTEXT_VALIDATOR
 )
 ```
@@ -362,7 +370,7 @@ validation_result: ValidationResult = await self.llms.get_structured_response(
 - Always returns required fields
 - Type-safe (Pydantic validation)
 
-**5. Receive ValidationResult**
+**6. Receive ValidationResult**
 
 The LLM returns a structured response:
 
@@ -373,7 +381,7 @@ The LLM returns a structured response:
 }
 ```
 
-**6. Apply Deterministic Logic**
+**7. Apply Deterministic Logic**
 
 The stage applies simple logic to the LLM's classification:
 
@@ -385,7 +393,7 @@ is_direct_match_flag = validation_result.context_type == MatchContextType.DIRECT
 - DIRECT_MATCH → Match accepted
 - All others → Match invalidated
 
-**7. Populate Stage Details**
+**8. Populate Stage Details**
 
 The stage records the validation outcome:
 
@@ -404,7 +412,7 @@ stage_details.details = {
 stage_details.is_final_success = is_direct_match_flag
 ```
 
-**8. Invalidate Previous Stage (if needed)**
+**9. Invalidate Previous Stage (if needed)**
 
 If the match is not a DIRECT_MATCH, the stage invalidates the previous stage:
 
@@ -413,16 +421,16 @@ if not stage_details.is_final_success:
     # Clear the verification flag
     if previous_stage_details.details.get(Logs.IS_VERIFIED) is True:
         previous_stage_details.details[Logs.IS_VERIFIED] = False
-    
+
     # Mark the stage as invalidated
     previous_stage_details.is_invalidated = True
 ```
 
 **Impact of Invalidation:**
-- The COMPLETE_MATCH results are marked as invalid
-- Subsequent stages (SEMANTIC_SEARCH, FINETUNED_LLM, etc.) can provide alternatives
-- Final consolidation will not use the invalidated match
-- The system continues processing to find better matches
+- The COMPLETE_MATCH results are marked as invalid (`is_invalidated=True`).
+- The pipeline continues to subsequent extraction stages (e.g., **FINETUNED_LLM**, **WEB_SEARCH**) to find better alternatives.
+- The invalidated match is excluded from the final "Best-Value Selection" process.
+- The `is_verified_flag` is explicitly set to `false`.
 
 
 ### Relationship Classification Logic
@@ -560,9 +568,9 @@ except Exception as e:
 
 ### Depends On
 
-- **COMPLETE_MATCH Stage** - Provides match to validate
-  - Requires: manufacturer name, part number, matched description
-  - If COMPLETE_MATCH finds no match, CONTEXT_VALIDATOR is skipped
+- **COMPLETE_MATCH Stage** - Provides match to validate.
+  - **Condition**: COMPLETE_MATCH must have found a match **AND** that match must meet the configured confidence thresholds.
+  - **Reason**: There is no value in validating a low-confidence match that wouldn't be selected anyway.
 
 ### Used By
 
@@ -572,7 +580,7 @@ except Exception as e:
 ### Stage Execution Order
 
 ```
-CLASSIFICATION → COMPLETE_MATCH → CONTEXT_VALIDATOR → SEMANTIC_SEARCH → FINETUNED_LLM → ...
+CLASSIFICATION → SEMANTIC_SEARCH → COMPLETE_MATCH → CONTEXT_VALIDATOR → FINETUNED_LLM → ...
 ```
 
 **Key Points:**
@@ -851,7 +859,7 @@ COMPLETE_MATCH Result:
 
 **Input:**
 ```
-Invoice Description: "Box of 100 - Eaton Circuit Breakers 20A"
+Invoice Description: "Box of 100 - Eaton BR120 Circuit Breakers 20A"
 COMPLETE_MATCH Result:
   - Manufacturer: "Eaton"
   - Part Number: "BR120"
@@ -871,7 +879,7 @@ COMPLETE_MATCH Result:
   "is_direct_match": true,
   "context_type": "DIRECT_MATCH",
   "reason": "The invoice and matched item describe the same Eaton BR120 circuit breaker. The only difference is packaging quantity (Box of 100 vs Each), which is ignored per UOM rule.",
-  "input_invoice_text": "Box of 100 - Eaton Circuit Breakers 20A",
+  "input_invoice_text": "Box of 100 - BR120 Eaton Circuit Breakers 20A",
   "input_matched_description": "Eaton BR120 Circuit Breaker 20 Amp (Each)",
   "validated_stage_number": 5,
   "validated_stage_name": "COMPLETE_MATCH",
@@ -889,40 +897,33 @@ COMPLETE_MATCH Result:
 ## Performance Characteristics
 
 ### Throughput
-- ~50-100 validations per second
-- Bottleneck: LLM API calls
-- Can be parallelized across multiple invoice lines
+- **~1-5 validations per second** (per processing thread).
+- **Bottleneck**: Azure OpenAI API latency and concurrency limits.
+- **Concurrency**: Throughput is strictly limited by the assigned Tokens-Per-Minute (TPM) quota on the Azure OpenAI deployment.
 
 ### Latency
-- LLM API call: 500-2000ms (depends on model and load)
-- Prompt construction: < 5ms
-- Result processing: < 5ms
-- Total: 500-2000ms per validation
+- **LLM API call**: 500-2000ms (varies based on model load and response length).
+- **Processing**: < 10ms (Prompt construction and JSON parsing).
+- **Total**: **~500-2000ms per validation**.
 
 ### Accuracy
-- DIRECT_MATCH detection: Very high (> 95%)
-- REPLACEMENT_PART detection: High (> 90%)
-- ACCESSORY_PART detection: High (> 90%)
-- LOT_OR_KIT detection: High (> 85%)
-- UNRELATED detection: Very high (> 95%)
-
-**Factors Affecting Accuracy:**
-- Clear, well-written invoice descriptions
-- Unambiguous grammar and phrasing
-- Complete product information in matched description
-- LLM model quality (GPT-4o performs better than GPT-3.5)
+- **Qualitative Assessment**: Production reviews indicate **high accuracy** in distinguishing context.
+- **Strengths**: The stage is particularly effective at identifying **Replacement Parts** (using grammar clues) and distinguishing **Unrelated** items where exact text matches are misleading (e.g., "Replacement for X").
+- **Factors Affecting Accuracy**:
+  - Clarity of the invoice description syntax.
+  - Detail level of the matched database description.
+  - LLM model capabilities (GPT-4o provides significantly better reasoning for complex relationships than earlier models).
 
 ### Resource Usage
-- Memory: Minimal (< 10 MB per request)
-- CPU: Low (mostly I/O bound waiting for LLM)
-- Network: Moderate (LLM API calls)
-- Cost: LLM API usage (tokens consumed per validation)
+- **Memory**: Minimal (< 10 MB per request).
+- **CPU**: Low (Primary operation is I/O waiting for LLM response).
+- **Network**: Moderate (Continuous outbound traffic to Azure OpenAI).
+- **Cost**: Driven directly by Token Usage (Input + Output).
 
 ### Token Usage
-- Typical prompt: 200-400 tokens
-- Typical response: 50-100 tokens
-- Total per validation: 250-500 tokens
-- Cost depends on Azure OpenAI pricing
+- **Input (Prompt)**: ~200-400 tokens (Includes Rules, Substitution/UOM logic, and Item details).
+- **Output (Response)**: ~50-100 tokens (Structured JSON format).
+- **Total**: ~250-500 tokens per validation.
 
 
 ## Monitoring and Troubleshooting
@@ -1029,29 +1030,3 @@ logger.setLevel(logging.DEBUG)
 - Track LLM API latency
 - Check for rate limit errors
 - Monitor token usage and costs
-
-### Validation Quality Metrics
-
-**Acceptance Rate:**
-- Percentage of matches classified as DIRECT_MATCH
-- Typical range: 60-80%
-- Too high (> 90%): Validator may be too lenient
-- Too low (< 40%): COMPLETE_MATCH may be inaccurate
-
-**Classification Distribution:**
-- DIRECT_MATCH: 60-80%
-- REPLACEMENT_PART: 10-20%
-- ACCESSORY_PART: 2-5%
-- LOT_OR_KIT: 2-5%
-- UNRELATED: 5-10%
-
-**Latency Percentiles:**
-- P50: 500-800ms
-- P95: 1000-1500ms
-- P99: 1500-2000ms
-
-**Error Rate:**
-- Target: < 1% of validations
-- Includes API errors, timeouts, missing fields
-- Excludes business logic rejections (non-DIRECT_MATCH)
-

@@ -1,7 +1,7 @@
 # EXTRACTION_WITH_LLM_AND_WEBSEARCH Stage - Web Search with AI Agent
 
-**Last Updated:** 2025-12-17  
-**Audience:** Business Analysts, QA Professionals  
+**Last Updated:** 2025-12-24
+**Author:** Kirill Levtov
 **Related:** [Solution Overview](01-solution-overview.md) | [FINETUNED_LLM Stage](07-finetuned-llm-stage.md) | [SEMANTIC_SEARCH Stage](06-semantic-search-stage.md)
 
 ## Overview
@@ -88,16 +88,13 @@ The stage prioritizes results from trusted electrical parts distributors:
 - Non-priority results still accepted but scored lower
 
 ### Result Ranking Algorithm
-The stage scores each web result based on multiple factors:
+The stage scores each web result based on multiple factors. The **Total Score** determines which result row is selected as the best match, while individual **Field Scores** serve as the confidence values for the extracted data points.
 
 **Scoring Factors:**
 
-1. **Manufacturer Match** (0-40 points)
-   - Exact: 40 points
-   - Likely: 30 points
-   - Possible: 20 points
-   - Mismatch: 0 points
-   - Bonus: +10 if manufacturer in database
+1. **Manufacturer Match** (0-50 points)
+   - **Base Score**: Exact (40), Likely (30), Possible (20), Mismatch/Not Detected (0).
+   - **Bonus**: +10 if the extracted manufacturer name exists in the internal database.
 
 2. **Part Number Match** (0-30 points)
    - Exact: 30 points
@@ -107,32 +104,33 @@ The stage scores each web result based on multiple factors:
    - No Match: 0 points
 
 3. **Part Number Length** (0-15 points)
-   - > 7 characters: 10 points
-   - 6-7 characters: 8 points
-   - 4-5 characters: 5 points
-   - < 4 characters: 2 points
-   - Alphanumeric: +5 points
+   - Length > 7: 10 points (decreasing for shorter lengths).
+   - Alphanumeric Bonus: +5 points (indicates complexity).
 
 4. **Description Similarity** (0-20 points)
-   - Exact: 20 points
-   - Very High: 15 points
-   - High: 10 points
-   - Medium: 5 points
-   - Low: 0 points
+   - Evaluated by the Ranking Agent based on semantic closeness.
+   - Exact (20), Very High (15), High (10), Medium (5), Low (0).
 
 5. **Data Sources** (0-25 points)
-   - Multiple priority sites: 25 points
-   - One priority site: 10 points
-   - Multiple non-priority: 5 points per site
+   - Evaluated based on the *set* of results returned by the search agent.
+   - **25 points**: Multiple priority sites found, or one priority + others.
+   - **10 points**: Single priority site found.
+   - **5 points per site**: Non-priority sites (up to 25 max).
 
-**Total Score:** Sum of all factors (0-130 points)
+**Confidence Calculation Formulas:**
 
-**Confidence Calculation:**
-```
-Manufacturer Confidence = (Mfr Score / Max Mfr Score) * 100
-Part Number Confidence = (PN Score / Max PN Score) * 100
-UNSPSC Confidence = (UNSPSC Score / Max UNSPSC Score) * 100
-```
+Unlike other stages that normalize scores to 100, this stage sums specific factors to determine field confidence:
+
+- **Manufacturer Confidence (Max 95)**:
+  `Mfr Match Score + Description Similarity + Data Sources Score`
+
+- **Part Number Confidence (Max 90)**:
+  `PN Match Score + PN Length Score + Description Similarity + Data Sources Score`
+
+- **UNSPSC Confidence (Max 90)**:
+  `(Description Similarity + Data Sources Score) * 2`
+
+*Note: The final "Confidence" used for ranking rows is a weighted average of these three field scores, prioritizing Manufacturer and Part Number.*
 
 
 ### Match Type Classifications
@@ -256,8 +254,8 @@ web_results_ranking_json, _, rank_thread_id, _ = await run_agent_and_get_json_wi
 4. **Confidence Calculation:**
 ```python
 df_with_confidences = await calculate_confidence_for_web_search_results_with_ranking(
-    sdp=sdp, 
-    web_results_ranking_json=web_results_ranking_json, 
+    sdp=sdp,
+    web_results_ranking_json=web_results_ranking_json,
     ivce_dtl=ivce_dtl
 )
 ```
@@ -265,8 +263,8 @@ df_with_confidences = await calculate_confidence_for_web_search_results_with_ran
 5. **Best Result Selection:**
 ```python
 best_result_df, is_mfr_clean_flag = await get_higher_confidence_web_search_result(
-    sdp=sdp, 
-    df=df_with_confidences, 
+    sdp=sdp,
+    df=df_with_confidences,
     fields=ivce_dtl.fields
 )
 ```
@@ -393,7 +391,7 @@ AZURE_AI_AGENT:
     AGENT_DEPLOYMENT: "search-agent-deployment"
     API_DEPLOYMENT: "gpt-4o"
     CONNECTION_ID: "bing-connection-id"
-  
+
   AZURE_AI_AGENT:
     AGENT_DEPLOYMENT: "ranking-agent-deployment"
     API_DEPLOYMENT: "gpt-4o"
@@ -411,21 +409,21 @@ EXTRACTION_WITH_LLM_AND_WEBSEARCH:
       mismatch: 0
       not_detected: 0
       existing_mfr: 10
-    
+
     PART_NUM_LENGTH:
       gt_7: 10
       eq_6_7: 8
       eq_4_5: 5
       lt_4: 2
       alphanumeric: 5
-    
+
     PART_NUM_MATCH:
       exact: 30
       strong: 25
       partial: 15
       possible: 10
       no_match: 0
-    
+
     DESCRIPTION_SIMILARITY:
       exact: 20
       very_high: 15
@@ -452,7 +450,7 @@ graph TD
     J --> K[Select Best Result]
     K --> L[Clean Manufacturer Name]
     L --> M[Return Best Result]
-    
+
     style A fill:#e1f5ff
     style C fill:#fff4e1
     style I fill:#f3e5f5
@@ -510,19 +508,20 @@ graph TD
 ### Required Services
 
 1. **Azure AI Agent Service**
-   - Purpose: AI agents for search and ranking
-   - Dependency: Must be accessible
-   - Failure Impact: Stage fails
+   - **Purpose**: Orchestrates the AI agents (Search and Ranking), managing threads, runs, and tool execution.
+   - **Dependency**: Must be accessible and properly configured with model deployments.
+   - **Failure Impact**: Stage fails immediately (non-retriable if service is down).
 
-2. **Bing Search API**
-   - Purpose: Web search capabilities
-   - Dependency: Must be accessible via agent
-   - Failure Impact: Search agent fails
+2. **Grounding with Bing Search**
+   - **Purpose**: Provides web search capabilities to the AI Agent.
+   - **Integration**: Configured as a "Knowledge" tool connected to the Search Agent.
+   - **Dependency**: A "Grounding with Bing Search" resource must be provisioned in Azure and linked to the Agent.
+   - **Failure Impact**: The Search Agent cannot retrieve external data; retries may occur, but ultimately the stage will return "No valid results".
 
 3. **SQL Database (SDP)**
-   - Purpose: Manufacturer name cleaning
-   - Dependency: Must be accessible
-   - Failure Impact: Manufacturer names not cleaned
+   - **Purpose**: Used for manufacturer name cleaning and verification against internal records.
+   - **Dependency**: Must be accessible.
+   - **Failure Impact**: Manufacturer names remain uncleaned ("UncleanName" used as "ManufacturerName"), but extraction continues.
 
 ### Module Dependencies
 
@@ -575,84 +574,37 @@ Description: "DEWALT DW745 TABLE SAW"
 
 **Processing:**
 
-1. **Search Agent:**
-- Formulates query: "DEWALT DW745 TABLE SAW specifications"
-- Finds results from: dewalt.com, homedepot.com, grainger.com
-- Extracts information from each site
+1.  **Search Agent:**
+    - Finds results from: `dewalt.com` (Non-Priority), `homedepot.com` (Priority).
 
-**Search Results:**
-```json
-[
-  {
-    "ID": 1,
-    "ManufacturerName": "DEWALT",
-    "PartNumber": "DW745",
-    "ItemDescription": "DEWALT DW745 10-Inch Compact Job-Site Table Saw",
-    "UNSPSC": "27112100",
-    "Source": "https://www.dewalt.com/product/dw745",
-    "PriorityMatch": false
-  },
-  {
-    "ID": 2,
-    "ManufacturerName": "DEWALT",
-    "PartNumber": "DW745",
-    "ItemDescription": "DEWALT 10 in. Compact Job Site Table Saw",
-    "UNSPSC": "27112100",
-    "Source": "https://www.homedepot.com/p/DEWALT-10-in-Compact-Job-Site-Table-Saw-DW745/202500206",
-    "PriorityMatch": true
-  }
-]
-```
+2.  **Ranking Agent Classifications:**
+    - **Result 1 (dewalt.com)**:
+        - Mfr: Exact | PN: Exact | Desc: Very High.
+    - **Result 2 (homedepot.com)**:
+        - Mfr: Exact | PN: Exact | Desc: High.
 
-2. **Ranking Agent:**
-- Compares each result to invoice description
-- Classifies match types
+3.  **Score Component Calculation:**
+    - **Data Sources Score**: **25** (1 Priority + 1 Non-Priority found in set).
+    - **Manufacturer Match**: **50** (40 Exact + 10 Database Bonus).
+    - **Part Number Match**: **30** (Exact).
+    - **Part Number Length**: **10** (5 chars [5 pts] + Alphanumeric [5 pts]).
+    - **Desc Similarity**: Result 1 (**15** - Very High), Result 2 (**10** - High).
 
-**Ranked Results:**
-```json
-[
-  {
-    "ID": 1,
-    "ManufacturerMatch": "Exact",
-    "DetectedManufacturer": "DEWALT",
-    "PartNumberMatch": "Exact",
-    "DetectedPartNumber": "DW745",
-    "ItemDescriptionMatch": "Very High",
-    ...
-  },
-  {
-    "ID": 2,
-    "ManufacturerMatch": "Exact",
-    "DetectedManufacturer": "DEWALT",
-    "PartNumberMatch": "Exact",
-    "DetectedPartNumber": "DW745",
-    "ItemDescriptionMatch": "High",
-    ...
-  }
-]
-```
+4.  **Field Confidence Calculation (Result 1):**
+    - **Manufacturer**: Mfr(50) + Desc(15) + Source(25) = **90**.
+    - **Part Number**: PN(30) + Len(10) + Desc(15) + Source(25) = **80**.
+    - **UNSPSC**: (Desc(15) + Source(25)) * 2 = **80**.
+    - **Ranking Confidence**: (90 * 0.45) + (80 * 0.45) + (80 * 0.1) = **84.5**.
 
-3. **Confidence Calculation:**
+5.  **Field Confidence Calculation (Result 2):**
+    - **Manufacturer**: 50 + 10 + 25 = **85**.
+    - **Part Number**: 30 + 10 + 10 + 25 = **75**.
+    - **UNSPSC**: (10 + 25) * 2 = **70**.
+    - **Ranking Confidence**: (85 * 0.45) + (75 * 0.45) + (70 * 0.1) = **79.0**.
 
-**Result 1 (dewalt.com):**
-- Manufacturer Match: 40 (Exact)
-- Part Number Length: 10 (5 chars) + 5 (alphanumeric) = 15
-- Part Number Match: 30 (Exact)
-- Description Similarity: 15 (Very High)
-- Data Sources: 5 (non-priority)
-- **Total: 105**
-
-**Result 2 (homedepot.com):**
-- Manufacturer Match: 40 (Exact)
-- Part Number Length: 15
-- Part Number Match: 30 (Exact)
-- Description Similarity: 10 (High)
-- Data Sources: 10 (priority site)
-- **Total: 105**
-
-4. **Best Result Selection:**
-- Both have same total score
-- Select first (Result 1)
+6.  **Best Result Selection:**
+    - Result 1 (84.5) > Result 2 (79.0).
+    - Selected: Result 1.
 
 **Output:**
 ```json
@@ -661,13 +613,11 @@ Description: "DEWALT DW745 TABLE SAW"
   "part_number": "DW745",
   "unspsc": "27112100",
   "confidence_score": {
-    "manufacturer_name": 85.0,
-    "part_number": 78.0,
-    "unspsc": 72.0
+    "manufacturer_name": 90.0,
+    "part_number": 80.0,
+    "unspsc": 80.0
   },
   "web_search_url": "https://www.dewalt.com/product/dw745",
-  "search_thread": "thread_abc123",
-  "rank_thread": "thread_def456",
   "is_mfr_clean_flag": true,
   "description": "dewalt dw745 table saw"
 }
@@ -684,36 +634,25 @@ Description: "ADVANCED RF TECH ADRF5020 AMPLIFIER"
 
 **Processing:**
 
-1. **Search Agent:**
-- Finds limited results
-- Only 2 results with valid URLs
+1.  **Search Agent:**
+    - Finds limited results: `digikey.com` (Priority) and `generic-parts.com` (Non-Priority).
 
-**Search Results:**
-```json
-[
-  {
-    "ID": 1,
-    "ManufacturerName": "ADVANCED RF TECHNOLOGIES",
-    "PartNumber": "ADRF5020",
-    "ItemDescription": "RF Power Amplifier ADRF5020",
-    "UNSPSC": "43201500",
-    "Source": "https://www.digikey.com/product/adrf5020",
-    "PriorityMatch": true
-  }
-]
-```
+2.  **Ranking Agent Classifications (Digi-Key Result):**
+    - **Manufacturer**: "Likely" (Input "ADVANCED RF TECH" vs Found "ADVANCED RF TECHNOLOGIES").
+    - **Part Number**: "Exact" ("ADRF5020").
+    - **Description**: "High".
 
-2. **Ranking Agent:**
-- Classifies manufacturer as "Likely" (abbreviation vs full name)
-- Classifies part number as "Exact"
+3.  **Score Component Calculation:**
+    - **Data Sources Score**: **25** (1 Priority + 1 Non-Priority found).
+    - **Manufacturer Match**: **40** (30 Likely + 10 Database Bonus).
+    - **Part Number Match**: **30** (Exact).
+    - **Part Number Length**: **15** (8 chars [10 pts] + Alphanumeric [5 pts]).
+    - **Desc Similarity**: **10** (High).
 
-3. **Confidence Calculation:**
-- Manufacturer Match: 30 (Likely) + 10 (in database) = 40
-- Part Number Length: 10 + 5 = 15
-- Part Number Match: 30 (Exact)
-- Description Similarity: 10 (High)
-- Data Sources: 10 (priority site)
-- **Total: 105**
+4.  **Field Confidence Calculation:**
+    - **Manufacturer**: Mfr(40) + Desc(10) + Source(25) = **75**.
+    - **Part Number**: PN(30) + Len(15) + Desc(10) + Source(25) = **80**.
+    - **UNSPSC**: (Desc(10) + Source(25)) * 2 = **70**.
 
 **Output:**
 ```json
@@ -724,8 +663,8 @@ Description: "ADVANCED RF TECH ADRF5020 AMPLIFIER"
   "unspsc": "43201500",
   "confidence_score": {
     "manufacturer_name": 75.0,
-    "part_number": 78.0,
-    "unspsc": 68.0
+    "part_number": 80.0,
+    "unspsc": 70.0
   },
   "web_search_url": "https://www.digikey.com/product/adrf5020",
   "is_mfr_clean_flag": true,
@@ -858,44 +797,43 @@ Description: "EATON BR120 CIRCUIT BREAKER 20A"
 ## Performance Characteristics
 
 ### Throughput
-- ~5-15 extractions per second
-- Bottleneck: Agent API calls and web search
-- Cannot be easily parallelized (agent thread management)
+- **Low Throughput**: ~1-3 extractions per minute (per thread).
+- **Bottleneck**: Web search latency and agent processing time.
+- **Concurrency**: Parallelization is possible but limited by API rate limits and cost considerations.
 
 ### Latency
-- Search agent: 10,000-30,000ms (10-30 seconds)
-- Ranking agent: 5,000-15,000ms (5-15 seconds)
-- Confidence calculation: 100-500ms
-- Total: 15,000-45,000ms (15-45 seconds)
-
-**Latency Factors:**
-- Web search time: Varies by query complexity
-- Number of pages visited: More pages = longer time
-- Agent processing: LLM inference time
-- Network latency: Web page load times
+- **Search Agent**: **20,000ms - 60,000ms** (20-60 seconds).
+  - *Drivers*: Formulating queries, executing Bing search, visiting multiple web pages, parsing HTML content, and synthesizing the answer.
+- **Ranking Agent**: **5,000ms - 15,000ms** (5-15 seconds).
+  - *Drivers*: Analyzing the JSON results against the invoice description using LLM reasoning.
+- **Total Latency**: **~30 - 75 seconds per extraction**.
 
 ### Accuracy
-- Manufacturer extraction: Moderate-High (70-85%)
-- Part number extraction: Moderate (65-80%)
-- UNSPSC extraction: Moderate (60-75%)
-
-**Factors Affecting Accuracy:**
-- Web page quality: Better structured pages = better extraction
-- Product availability: Obscure products harder to find
-- Agent prompt quality: Better prompts = better results
-- Ranking accuracy: Better classification = better selection
+- **Assessment**: **High capability** for finding obscure items, but results vary based on web data availability.
+- **Pipeline Context**: Since this stage runs last, it processes the **"hardest cases"**—items that failed exact matching, semantic search, and fine-tuned extraction. Consequently, while the agent is powerful, the overall success rate depends heavily on whether the product exists and is indexable on the public web.
+- **Factors Affecting Accuracy**:
+  - **Web Data Quality**: Availability of clear product pages (distributors vs. generic marketplaces).
+  - **Ranking Logic**: The two-agent system (Search + Rank) significantly reduces hallucinations compared to a single-pass search.
 
 ### Resource Usage
-- Memory: Moderate (50-100 MB per request)
-- CPU: Low (mostly I/O bound)
-- Network: High (web searches and page visits)
-- Cost: Agent API usage + Bing search API usage
+- **Memory**: Moderate (50-100 MB per request).
+- **CPU**: Low (I/O bound).
+- **Network**: High. Heavy outbound traffic for web page retrieval.
 
 ### Cost Considerations
-- Agent API calls: 2 per extraction (search + ranking)
-- Bing search API: 1 per extraction
-- Token usage: 1000-3000 tokens per agent call
-- Total cost: Higher than other stages due to web search
+This is the most expensive stage in the pipeline due to the combination of service fees and high token consumption.
+
+1.  **Bing Search Costs**:
+    - **Rate**: **$35 per 1,000 transactions** (Grounding with Bing Search pricing).
+    - **Impact**: Every execution triggers at least one search transaction.
+
+2.  **Token Consumption**:
+    - **Search Agent Input**: **High (~10,000+ tokens)**.
+    - **Reasoning**: The input token count includes not just the user prompt, but the **content of the web pages** the agent visits and analyzes. Parsing multiple distributor pages consumes a significant volume of context window.
+    - **Ranking Agent Input**: Moderate (~1,000-2,000 tokens) to process the JSON search results.
+
+3.  **Agent API Calls**:
+    - Two distinct agent calls per item (Search + Ranking).
 
 ## Retry Strategies and Error Handling
 
@@ -919,7 +857,7 @@ graph TD
     H -->|No| I{More App Retries?}
     I -->|Yes| B
     I -->|No| J[Fail]
-    
+
     style A fill:#e1f5ff
     style B fill:#fff4e1
     style C fill:#f3e5f5
@@ -948,24 +886,25 @@ graph TD
 
 ### Configuration Parameters
 
-Retry behavior is configured through the `agent_retry_settings` dictionary in `config.yaml`:
+Retry behavior is configured dynamically through **Azure App Configuration** (Key: `MAIN:AGENT_RETRY_SETTINGS`). This allows for real-time tuning of retry logic without redeploying the application.
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `max_attempts` | integer | 3 | Maximum retry attempts for each layer |
-| `default_wait_seconds` | integer | 60 | Base wait time between retries (seconds) |
-| `attempt_timeout_seconds` | integer | 180 | Timeout for each individual attempt (seconds) |
-| `first_attempt_congestion_multiplier_sec` | integer | 10 | Multiplier for congestion-based delay calculation |
-| `first_attempt_max_congestion_delay_sec` | integer | 60 | Maximum congestion-based delay (seconds) |
+| Parameter | Type | Current Setting | Description |
+|-----------|------|-----------------|-------------|
+| `max_attempts` | integer | 6 | Maximum retry attempts for each layer (increased to handle high-latency web searches). |
+| `default_wait_seconds` | integer | 30 | Base wait time between retries (seconds). |
+| `attempt_timeout_seconds` | integer | 360 | Timeout for each individual attempt (6 minutes). Allows sufficient time for deep web traversal. |
+| `first_attempt_congestion_multiplier_sec` | integer | 15 | Multiplier for congestion-based delay calculation (Wait = ActiveRetries * 15s). |
+| `first_attempt_max_congestion_delay_sec` | integer | 90 | Maximum cap for the congestion-based delay (seconds). |
 
-**Example Configuration:**
-```yaml
-agent_retry_settings:
-  max_attempts: 3
-  default_wait_seconds: 60
-  attempt_timeout_seconds: 180
-  first_attempt_congestion_multiplier_sec: 10
-  first_attempt_max_congestion_delay_sec: 60
+**Azure App Configuration Example:**
+```json
+{
+  "max_attempts": 6,
+  "default_wait_seconds": 30,
+  "attempt_timeout_seconds": 360,
+  "first_attempt_congestion_multiplier_sec": 15,
+  "first_attempt_max_congestion_delay_sec": 90
+}
 ```
 
 ### Rate Limit Handling
@@ -1001,32 +940,32 @@ wait_time = parsed_seconds + jitter  # 45 + jitter
 ```
 
 **Jitter Calculation Logic:**
-- **Purpose**: Prevent thundering herd problem (many tasks retrying simultaneously)
-- **Strategy**: Earlier attempts get more jitter, later attempts get less
-- **Example**:
-  - Attempt 1 of 3: jitter range = [7-11] seconds
-  - Attempt 2 of 3: jitter range = [1-5] seconds
-  - Attempt 3 of 3: jitter range = [1-5] seconds
+- **Purpose**: Prevent thundering herd problem by ensuring tasks retry at sufficiently random intervals.
+- **Strategy**: Early attempts get significantly higher jitter to alleviate immediate pressure; later attempts get minimal jitter.
+- **Configuration**: Based on `max_attempts = 6`.
+- **Examples**:
+  - **Attempt 1 (Index 0)**: `distance=4` → Jitter Range: **[25 - 29] seconds**.
+  - **Attempt 2 (Index 1)**: `distance=3` → Jitter Range: **[19 - 23] seconds**.
+  - **Attempt 5 (Index 4)**: `distance=0` → Jitter Range: **[1 - 5] seconds**.
 
 **Fallback Behavior:**
-- If message parsing fails: Use `default_wait_seconds` + random jitter (0-5 seconds)
-- If no wait time in message: Use `default_wait_seconds` + random jitter (0-5 seconds)
+- If message parsing fails: Use `default_wait_seconds` (30s) + random jitter (0-5s).
 
 #### Rate Limit Example
 
 **Scenario: Rate limit hit on first attempt**
 
-```
+```text
 Attempt 1:
 - Status: failed
 - Error: rate_limit_exceeded
 - Message: "Please try again in 45 seconds"
 - Parsed wait: 45 seconds
-- Jitter: 8.3 seconds (range: 7-11)
-- Total wait: 53.3 seconds
-- Log: "Agent run attempt 1 failed (failed, parsed (45s + 8.3s jitter [7-11s range]))"
+- Jitter: 27.5 seconds (range: 25-29s for Attempt 1 of 6)
+- Total wait: 72.5 seconds
+- Log: "Agent run attempt 1 failed (failed, parsed (45s + 27.5s jitter [25-29s range]))"
 
-[Wait 53.3 seconds]
+[Wait 72.5 seconds]
 
 Attempt 2:
 - Status: completed
@@ -1074,55 +1013,58 @@ total_delay = congestion_delay + random_delay
 
 **Example Calculations:**
 
-| Retrying Tasks | Multiplier | Congestion Delay | Random | Total Delay |
-|----------------|------------|------------------|--------|-------------|
-| 0 | 10 | 0s | 2.3s | 2.3s |
-| 3 | 10 | 30s | 4.1s | 34.1s |
-| 5 | 10 | 50s | 1.7s | 51.7s |
-| 8 | 10 | 60s (capped) | 3.5s | 63.5s |
+Based on `first_attempt_congestion_multiplier_sec = 15` and `first_attempt_max_congestion_delay_sec = 90`:
+
+| Retrying Tasks | Multiplier | Congestion Delay | Random (Example) | Total Delay |
+|----------------|------------|------------------|------------------|-------------|
+| 0 | 15 | 0s | 2.3s | 2.3s |
+| 3 | 15 | 45s | 4.1s | 49.1s |
+| 5 | 15 | 75s | 1.7s | 76.7s |
+| 8 | 15 | 90s (capped) | 3.5s | 93.5s |
 
 **Benefits:**
-- **Load Distribution**: Spreads out first attempts over time
-- **Service Protection**: Prevents spike of requests during recovery
-- **Fairness**: Earlier tasks get priority (less delay)
+- **Load Distribution**: Spreads out first attempts over a wider window (up to 90s) when the system is under stress.
+- **Service Protection**: Prevents a spike of new requests while existing requests are struggling.
 
 #### Congestion Control Example
 
-**Scenario: 5 tasks hit rate limit simultaneously**
+**Scenario: 5 tasks start their first attempt simultaneously while the system is under load.**
 
-```
-Task A (first to retry):
+*(Assumes `multiplier = 15s`)*
+
+```text
+Task A (first to start):
 - Retrying tasks: 0
 - Congestion delay: 0s
 - Random delay: 2.1s
 - Total delay: 2.1s
 
-Task B (second to retry):
+Task B (second to start):
 - Retrying tasks: 1 (Task A waiting)
-- Congestion delay: 10s
+- Congestion delay: 15s
 - Random delay: 3.7s
-- Total delay: 13.7s
+- Total delay: 18.7s
 
-Task C (third to retry):
+Task C (third to start):
 - Retrying tasks: 2 (Tasks A, B waiting)
-- Congestion delay: 20s
-- Random delay: 1.4s
-- Total delay: 21.4s
-
-Task D (fourth to retry):
-- Retrying tasks: 3 (Tasks A, B, C waiting)
 - Congestion delay: 30s
-- Random delay: 4.9s
-- Total delay: 34.9s
+- Random delay: 1.4s
+- Total delay: 31.4s
 
-Task E (fifth to retry):
+Task D (fourth to start):
+- Retrying tasks: 3 (Tasks A, B, C waiting)
+- Congestion delay: 45s
+- Random delay: 4.9s
+- Total delay: 49.9s
+
+Task E (fifth to start):
 - Retrying tasks: 4 (Tasks A, B, C, D waiting)
-- Congestion delay: 40s
+- Congestion delay: 60s
 - Random delay: 2.6s
-- Total delay: 42.6s
+- Total delay: 62.6s
 ```
 
-Result: Tasks spread out over ~40 seconds instead of all hitting service simultaneously.
+**Result**: Tasks are spread out over **~63 seconds** instead of all hitting the service simultaneously, significantly reducing the likelihood of triggering rate limits immediately.
 
 ### Truncated JSON Handling
 
@@ -1136,14 +1078,14 @@ Truncated JSON is detected during parsing:
 def extract_and_validate_json(response: str, agent_type: str, thread_id: str):
     # Extract JSON from response
     json_str = extract_json_from_text(response)
-    
+
     # Parse JSON
     parsed = json.loads(json_str)
-    
+
     # Check for truncation indicators
     if appears_truncated(json_str):
         raise TruncatedJsonError(f"JSON appears truncated for {agent_type}")
-    
+
     return parsed
 ```
 
@@ -1170,7 +1112,7 @@ Attempt 1:
 - Response: '{"ID": 1, "ManufacturerName": "DEWALT", "PartNumber": "DW7'
 - Error: TruncatedJsonError (incomplete string)
 - Log: "RETRY_HELPER: Retriable truncated JSON from 'web search' on attempt 1/3"
-- Wait: 62.3 seconds (60 + 2.3 jitter)
+- Wait: 32.3 seconds (30 + 2.3 jitter)
 
 Attempt 2:
 - Response: '{"ID": 1, "ManufacturerName": "DEWALT", "PartNumber": "DW745", "Source": "..."}'
@@ -1225,7 +1167,7 @@ Attempt 1:
 - Response: [{"ID": 1, "ManufacturerName": "DEWALT", "PartNumber": "DW745"}]
 - Error: MissingRequiredFieldError (no "Source" field)
 - Log: "RETRY_HELPER: Retriable 'MissingRequiredFieldError' from 'web search' on attempt 1/3"
-- Wait: 63.7 seconds (60 + 3.7 jitter)
+- Wait: 33.7 seconds (30 + 3.7 jitter)
 
 Attempt 2:
 - Response: [{"ID": 1, "ManufacturerName": "DEWALT", "PartNumber": "DW745", "Source": "https://..."}]
@@ -1240,11 +1182,11 @@ If missing field persists after all retries, the system patches the data:
 # On final attempt, patch missing fields with placeholder
 if attempt + 1 >= max_retries:
     logger.warning("Max retries reached for missing 'Source' key. Patching data with 'N/A'")
-    
+
     for item in results:
         if "Source" not in item:
             item["Source"] = "Missing Source URL"
-    
+
     return results  # Return patched data as success
 ```
 
@@ -1265,7 +1207,7 @@ run = await asyncio.wait_for(
         thread_id=thread_id,
         agent_id=agent_id
     ),
-    timeout=attempt_timeout_seconds  # Default: 180 seconds
+    timeout=attempt_timeout_seconds  # Default: 360 seconds
 )
 ```
 
@@ -1273,7 +1215,7 @@ run = await asyncio.wait_for(
 - **Raises**: `asyncio.TimeoutError`
 - **Logged**: "Agent run failed due to timeout on attempt X"
 - **Not Retried**: Timeout errors are non-retriable (breaks retry loop immediately)
-- **Rationale**: If agent takes > 180 seconds, likely stuck or processing too complex
+- **Rationale**: If agent takes > 360 seconds, likely stuck or processing too complex
 
 #### Total Stage Timeout
 
@@ -1294,30 +1236,27 @@ stage_result = await asyncio.wait_for(
 
 ### Error Classification
 
-The stage classifies errors into retriable and non-retriable categories:
+The stage classifies errors to determine whether to retry the operation or fail immediately. Retries occur at different layers of the stack (Application wrapper vs. Internal Agent loop).
 
 #### Retriable Errors
+These errors trigger retry logic either within the Agent execution loop or the JSON validation wrapper:
 
-These errors trigger retry logic:
-
-| Error Type | Description | Retry Strategy |
-|------------|-------------|----------------|
-| `rate_limit_exceeded` | Azure AI service rate limit hit | Dynamic wait based on message |
-| `TruncatedJsonError` | Agent returned incomplete JSON | Default wait + jitter |
-| `MissingRequiredFieldError` | Agent omitted required field | Default wait + jitter |
-| `failed` (agent status) | Agent run failed (generic) | Default wait + jitter |
-| `incomplete` (agent status) | Agent run incomplete | Default wait + jitter |
-| Generic SDK exceptions | Network issues, transient failures | Default wait + jitter |
+| Error Type | Layer | Retry Strategy |
+|------------|-------|----------------|
+| **Agent Status `failed`** | Internal (SDK) | The system detects the failure, applies a backoff, and retries the run (up to configured limit). |
+| **`rate_limit_exceeded`** | Internal (SDK) | Parses the "Retry-After" header/message to calculate a precise dynamic wait time. |
+| **`TruncatedJsonError`** | Application | Detected during parsing. Retries with default wait + jitter. |
+| **`MissingRequiredFieldError`** | Application | Valid JSON missing key fields. Retries with default wait + jitter. |
+| **Generic SDK Exceptions** | Internal (SDK) | Handles transient network issues (500/503) with backoff. |
 
 #### Non-Retriable Errors
-
-These errors fail immediately without retry:
+These errors cause the execution to stop immediately:
 
 | Error Type | Description | Behavior |
 |------------|-------------|----------|
-| `asyncio.TimeoutError` | Attempt exceeded timeout | Break retry loop, raise error |
-| `InvalidJsonResponseError` | Non-JSON response (conversational text) | Raise error immediately |
-| `completed` with invalid data | Agent completed but data unusable | Return error status |
+| **`asyncio.TimeoutError`** | Execution exceeded `attempt_timeout_seconds` | Raises error immediately. Assumes the request is stuck or too complex. |
+| **`InvalidJsonResponseError`** | Response cannot be parsed as JSON (e.g., conversational text) | Raises error immediately. (Note: Only raised after internal retries for truncation are exhausted). |
+| **Persistent Failure** | Any "Retriable" error that persists after `max_attempts` | Raises the last exception to the pipeline orchestrator. |
 
 ### Logging and Observability
 
@@ -1356,77 +1295,73 @@ Every log entry includes:
 - **Wait Time**: Calculated wait time with breakdown
 - **Error Details**: Error code, message, and context
 
-#### Monitoring Metrics
-
-Track these metrics for operational health:
-
-| Metric | Description | Target |
-|--------|-------------|--------|
-| Retry Rate | % of calls requiring retry | < 20% |
-| Rate Limit Rate | % of calls hitting rate limit | < 10% |
-| Timeout Rate | % of calls timing out | < 5% |
-| Truncated JSON Rate | % of responses with truncated JSON | < 5% |
-| Missing Field Rate | % of responses missing required fields | < 5% |
-| Average Retries | Average retry attempts per call | < 1.5 |
-| Congestion Delay | Average first-attempt delay | < 30s |
-
 ### Error Recovery Examples
 
 #### Example 1: Rate Limit Recovery
 
-```
-[2025-12-17 10:15:23] DEBUG: Agent Run Attempt 1/3 [Thread: thread_abc123, Agent: search-agent]
-[2025-12-17 10:15:45] WARNING: Agent run attempt 1 failed (failed, parsed (45s + 8.3s jitter [7-11s range])). [Thread: thread_abc123]
+*Context: `max_attempts=6`, `rate_limit_wait=45s` parsed from message.*
+
+```text
+[2025-12-17 10:15:23] DEBUG: Agent Run Attempt 1/6 [Thread: thread_abc123, Agent: search-agent]
+[2025-12-17 10:15:45] WARNING: Agent run attempt 1 failed (failed, parsed (45s + 27.2s jitter [25-29s range])). [Thread: thread_abc123]
 [2025-12-17 10:15:45] DEBUG: [Thread: thread_abc123] Incremented global _SHARED_RETRY_WAITING_TASKS_COUNT to 4 before sleep for attempt 2.
-[2025-12-17 10:16:38] DEBUG: [Thread: thread_abc123] Decremented global _SHARED_RETRY_WAITING_TASKS_COUNT to 3 after sleep.
-[2025-12-17 10:16:38] DEBUG: Agent Run Attempt 2/3 [Thread: thread_abc123, Agent: search-agent]
-[2025-12-17 10:17:02] DEBUG: Agent run successful on attempt 2 [Thread: thread_abc123]
+[2025-12-17 10:16:57] DEBUG: [Thread: thread_abc123] Decremented global _SHARED_RETRY_WAITING_TASKS_COUNT to 3 after sleep.
+[2025-12-17 10:16:57] DEBUG: Agent Run Attempt 2/6 [Thread: thread_abc123, Agent: search-agent]
+[2025-12-17 10:17:20] DEBUG: Agent run successful on attempt 2 [Thread: thread_abc123]
 ```
 
-**Outcome**: Recovered after 1 retry with dynamic wait time.
+**Outcome**: Recovered after 1 retry. The high jitter on Attempt 1 (27.2s) helps disperse load.
 
 #### Example 2: Truncated JSON Recovery
 
-```
-[2025-12-17 10:20:15] DEBUG: RETRY_HELPER: Agent 'web search' run finished on attempt 1/3. Status: completed. Thread: thread_def456
-[2025-12-17 10:20:15] WARNING: RETRY_HELPER: Retriable truncated JSON from 'web search' on attempt 1/3. Thread: thread_def456. Error: JSON appears truncated
-[2025-12-17 10:20:15] DEBUG: RETRY_HELPER: Waiting 62.3 seconds before next attempt...
-[2025-12-17 10:21:17] DEBUG: RETRY_HELPER: Agent 'web search' run finished on attempt 2/3. Status: completed. Thread: thread_def456
-[2025-12-17 10:21:17] DEBUG: RETRY_HELPER: Successfully extracted and validated JSON on attempt 2
+*Context: `max_attempts=6`, `default_wait=30s`.*
+
+```text
+[2025-12-17 10:20:15] DEBUG: RETRY_HELPER: Agent 'web search' run finished on attempt 1/6. Status: completed. Thread: thread_def456
+[2025-12-17 10:20:15] WARNING: RETRY_HELPER: Retriable truncated JSON from 'web search' on attempt 1/6. Thread: thread_def456. Error: JSON appears truncated
+[2025-12-17 10:20:15] DEBUG: RETRY_HELPER: Waiting 56.5 seconds before next attempt (30s default + 26.5s jitter)...
+[2025-12-17 10:21:12] DEBUG: RETRY_HELPER: Agent 'web search' run finished on attempt 2/6. Status: completed. Thread: thread_def456
+[2025-12-17 10:21:12] DEBUG: RETRY_HELPER: Successfully extracted and validated JSON on attempt 2
 ```
 
 **Outcome**: Recovered after 1 retry with complete JSON.
 
 #### Example 3: Missing Field with Graceful Degradation
 
-```
-[2025-12-17 10:25:30] WARNING: RETRY_HELPER: Retriable 'MissingRequiredFieldError' from 'web search' on attempt 1/3. Thread: thread_ghi789
-[2025-12-17 10:26:33] WARNING: RETRY_HELPER: Retriable 'MissingRequiredFieldError' from 'web search' on attempt 2/3. Thread: thread_ghi789
-[2025-12-17 10:27:36] WARNING: RETRY_HELPER: Retriable 'MissingRequiredFieldError' from 'web search' on attempt 3/3. Thread: thread_ghi789
-[2025-12-17 10:27:36] WARNING: RETRY_HELPER: Max retries reached for missing 'Source' key. Patching data with 'N/A' and returning as success. Thread: thread_ghi789
+*Context: `max_attempts=6`. Graceful degradation triggers only on the final attempt.*
+
+```text
+[2025-12-17 10:25:30] WARNING: RETRY_HELPER: Retriable 'MissingRequiredFieldError' from 'web search' on attempt 1/6. Thread: thread_ghi789
+... [Attempts 2-5 fail similarly] ...
+[2025-12-17 10:35:00] WARNING: RETRY_HELPER: Retriable 'MissingRequiredFieldError' from 'web search' on attempt 6/6. Thread: thread_ghi789
+[2025-12-17 10:35:00] WARNING: RETRY_HELPER: Max retries reached for missing 'Source' key. Patching data with 'N/A' and returning as success. Thread: thread_ghi789
 ```
 
-**Outcome**: Failed to get "Source" field after 3 attempts, patched with placeholder, returned partial data.
+**Outcome**: Failed to get "Source" field after 6 attempts; patched with placeholder to allow pipeline to continue.
 
 #### Example 4: Timeout (Non-Retriable)
 
-```
-[2025-12-17 10:30:00] DEBUG: Agent Run Attempt 1/3 [Thread: thread_jkl012, Agent: search-agent]
-[2025-12-17 10:33:00] ERROR: Agent run failed due to timeout on attempt 1. Not retrying TimeoutError. [Thread: thread_jkl012]
-[2025-12-17 10:33:00] ERROR: Agent run ultimately failed due to exception: TimeoutError. [Thread: thread_jkl012]
+*Context: `attempt_timeout_seconds=360` (6 minutes).*
+
+```text
+[2025-12-17 10:30:00] DEBUG: Agent Run Attempt 1/6 [Thread: thread_jkl012, Agent: search-agent]
+[2025-12-17 10:36:01] ERROR: Agent run failed due to timeout on attempt 1. Not retrying TimeoutError. [Thread: thread_jkl012]
+[2025-12-17 10:36:01] ERROR: Agent run ultimately failed due to exception: TimeoutError. [Thread: thread_jkl012]
 ```
 
-**Outcome**: Failed immediately on timeout, no retry attempted.
+**Outcome**: Failed immediately after the 6-minute timeout expired. No retries attempted.
 
 #### Example 5: Congestion Control in Action
 
-```
-[2025-12-17 10:35:00] DEBUG: First attempt for [Thread: thread_mno345] (retrying tasks: 5). Calculated delay: 50s (congestion) + 3.2s (random) = 53.2s.
-[2025-12-17 10:35:53] DEBUG: Agent Run Attempt 1/3 [Thread: thread_mno345, Agent: search-agent]
-[2025-12-17 10:36:15] DEBUG: Agent run successful on attempt 1 [Thread: thread_mno345]
+*Context: `first_attempt_congestion_multiplier_sec=15`, 5 existing tasks.*
+
+```text
+[2025-12-17 10:40:00] DEBUG: First attempt for [Thread: thread_mno345] (retrying tasks: 5). Calculated delay: 75s (congestion) + 3.2s (random) = 78.2s.
+[2025-12-17 10:41:18] DEBUG: Agent Run Attempt 1/6 [Thread: thread_mno345, Agent: search-agent]
+[2025-12-17 10:41:45] DEBUG: Agent run successful on attempt 1 [Thread: thread_mno345]
 ```
 
-**Outcome**: Delayed first attempt by 53 seconds due to 5 other tasks retrying, then succeeded.
+**Outcome**: Delayed start by ~78 seconds to let 5 other struggling tasks finish, preventing rate limit escalation.
 
 ## Monitoring and Troubleshooting
 
@@ -1480,6 +1415,18 @@ Track these metrics for operational health:
   - Agent returning extra text
 - Solution: Review agent response, check prompt instructions, improve JSON extraction
 
+### Debugging Agent Behavior (Traceability)
+
+Unlike deterministic code, AI Agents perform autonomous steps. To debug *why* an agent failed to find a part or hallucinated a match, you must inspect the **Thread History** in the Azure AI Agent Service.
+
+**Using Thread IDs:**
+1.  Locate the `search_thread` or `rank_thread` ID in the Cosmos DB log (e.g., `thread_abc123...`).
+2.  Use the Azure AI Agent API or Portal to list the **Messages** and **Runs** for that thread.
+3.  **What to look for:**
+    - **Search Queries**: Did the agent generate a specific enough query? (e.g., "Dewalt DW745 specs" vs. "Dewalt saw").
+    - **Tool Outputs**: Did Bing return relevant snippets? Did the agent fail to scrape the page?
+    - **Reasoning**: Review the agent's internal monologue (if available) to understand why it discarded a result.
+
 ### Health Checks
 
 **Before Stage Runs:**
@@ -1529,35 +1476,3 @@ logger.setLevel(logging.DEBUG)
 - Check why URLs removed
 - Verify validation rules
 - Test URL accessibility
-
-### Quality Metrics
-
-**Search Success Rate:**
-- Percentage of searches that return results
-- Typical range: 70-85%
-- Too low (< 60%): Review search prompts or product availability
-
-**URL Validation Pass Rate:**
-- Percentage of URLs that pass validation
-- Typical range: 80-95%
-- Too low (< 70%): Review agent URL extraction or validation rules
-
-**Ranking Success Rate:**
-- Percentage of ranking attempts that succeed
-- Typical range: 90-98%
-- Too low (< 85%): Review ranking agent or JSON parsing
-
-**Confidence Score Distribution:**
-- Manufacturer: 70-85
-- Part Number: 65-80
-- UNSPSC: 60-75
-
-**Latency Percentiles:**
-- P50: 20,000ms (20 seconds)
-- P95: 35,000ms (35 seconds)
-- P99: 45,000ms (45 seconds)
-
-**Error Rate:**
-- Target: < 10% of extractions
-- Includes agent errors, timeouts, validation failures
-

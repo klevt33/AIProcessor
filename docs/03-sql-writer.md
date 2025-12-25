@@ -1,14 +1,14 @@
 # SQL Writer - Background Database Update Service
 
-**Last Updated:** 2025-12-17  
-**Audience:** Business Analysts, QA Professionals  
+**Last Updated:** 2025-12-18
+**Author:** Kirill Levtov
 **Related:** [Solution Overview](01-solution-overview.md) | [Processing Pipeline](01-solution-overview.md#processing-flow)
 
 ## Overview
 
-The SQL Writer Service is a background service that asynchronously writes AI processing results from Cosmos DB to the SQL database. It operates independently from the main API processing, ensuring that database writes don't block API responses and that failed writes can be retried without affecting the user experience.
+The SQL Writer Service is a background service that asynchronously writes AI processing results from Cosmos DB to the SQL database. It was implemented specifically to address frequent **SQL database deadlock issues** caused by concurrent updates from multiple API threads. By offloading writes to a dedicated service with serial processing, the system ensures data integrity without blocking the main processing pipeline.
 
-The service continuously polls Cosmos DB for completed processing documents, extracts the results, and updates the corresponding invoice detail records in the SQL database. It implements sophisticated error handling including retry logic with exponential backoff, circuit breaker pattern for SQL outages, and poison pill handling for documents that repeatedly fail.
+The service continuously polls Cosmos DB for completed processing documents, extracts the results, and updates the corresponding invoice detail records. It implements sophisticated error handling including a dual-layer retry strategy, circuit breaker pattern for SQL outages, and poison pill handling.
 
 ## Key Concepts
 
@@ -35,6 +35,19 @@ When SQL writes fail, the service doesn't give up immediately:
 - Fifth retry: Wait 32 minutes
 - Maximum wait: 1 hour (capped)
 - After 5 retries: Mark as poison pill
+
+### Dual-Layer Retry Strategy
+The system implements two distinct retry mechanisms to handle different types of failures:
+
+1.  **Short Wait Retries (Decorator)**
+    - Implemented via the `@retry_on_deadlock(max_retries=3, backoff_factor=2.0)` decorator on the specific SQL update function.
+    - Handles transient database locks and deadlocks immediately within the execution thread.
+    - Provides fast recovery for minor contention issues.
+
+2.  **Long Wait Retries (Service Level)**
+    - Implemented by the SQL Writer service loop.
+    - Handles persistent failures (e.g., connection timeouts, prolonged outages) by rescheduling the document for future processing.
+    - Uses the exponential backoff strategy described below (2 minutes to 1 hour).
 
 ### Circuit Breaker Pattern
 Prevents cascading failures during SQL outages:
@@ -159,22 +172,31 @@ Worker thread management (starts SQL Writer).
 
 **Key Methods:**
 
-- `Worker.start_worker_thread()` - Starts supervisor and worker threads
-  - Starts SQL Writer Service
-  - Starts invoice processing workers
+- `Worker.start_worker_thread()` - Spawns the daemon supervisor thread.
+- `Worker._supervise_worker()` - The main supervisor loop that:
+  - Starts the **SQL Writer Service**.
+  - Starts the main **invoice processing worker**.
+  - Monitors both threads continuously.
+  - Automatically restarts either thread if they stop unexpectedly or crash.
 
 ## Configuration
 
-The SQL Writer is configured through the `config.yaml` file and Azure App Configuration:
+The SQL Writer is configured primarily through the **Azure App Configuration** service, which supersedes local configuration files.
 
-### SQL Writer Settings (config.yaml)
+### Azure App Configuration
 
-```yaml
-SQL_WRITER_SETTINGS:
-  batch_size: 25                     # Documents per batch from Cosmos DB
-  poll_interval_seconds: 5           # Seconds between Cosmos DB polls
-  max_workers: 1                     # Thread pool size (MUST be 1 for production)
+**Key**: `MAIN:SQL_WRITER_SETTINGS`
+**Content Type**: `application/json`
+**Value**:
+```json
+{
+  "batch_size": 25,
+  "poll_interval_seconds": 5,
+  "max_workers": 1
+}
 ```
+
+*Note: While `config.yaml` may contain fallback values, the active configuration is loaded dynamically from Azure.*
 
 ### Configuration Parameters
 
@@ -199,7 +221,7 @@ These are defined in the `SqlWriterService` class:
 ### Environment-Specific Behavior
 
 **Local Environment:**
-- Filters documents by `sys_name` from config (e.g., "kirill", "john")
+- Filters documents by `sys_name` from config (e.g., "kirill", "vamsi")
 - Allows multiple developers to work independently
 - Each developer only processes their own documents
 
@@ -264,7 +286,7 @@ The SQL Writer continuously polls Cosmos DB with this query:
 
 ```sql
 WHERE (
-  (c.sql_writer.status = 'pending') OR 
+  (c.sql_writer.status = 'pending') OR
   (c.sql_writer.status = 'retry_scheduled' AND c.sql_writer.retry_after <= {current_timestamp})
 ) AND c.request_details.sys_name = 'web'
 ```
@@ -327,7 +349,7 @@ For each document, the SQL Writer performs these operations:
    - `CLN_MFR_PRT_NUM`: Part number
    - `UNSPSC_CD`: UNSPSC code
    - `UPC_CD`: UPC code
-   - `AKS_PRT_NUM`: AKS part number
+   - `AKS_PRT_NUM`: ASK part number
    - `ITM_AI_LDSC`: Cleaned description
    - `IVCE_LNE_STAT`: Invoice line status
    - `DATA_VRFN_IND`: Verification flag
@@ -802,14 +824,14 @@ SQL Writer: Successfully processed and committed doc ID doc1.
 ### Throughput
 
 **Normal Operation:**
-- ~5-10 documents per second
+- ~1-5 documents per second
 - Depends on SQL database performance
 - Batch size affects throughput
 
 **With Duplicates:**
 - Slower due to sequential processing
-- Each duplicate adds ~100-200ms
-- 10 duplicates: ~1-2 seconds per document
+- Each duplicate adds ~200-400ms
+- 10 duplicates: ~2-4 seconds per document
 
 **During Retries:**
 - Throughput reduced by backoff delays
@@ -818,10 +840,15 @@ SQL Writer: Successfully processed and committed doc ID doc1.
 
 ### Latency
 
-**End-to-End Latency:**
-- API response: < 1 second (writes to Cosmos DB)
-- SQL write: 5-15 seconds (poll interval + processing)
-- Total: 6-16 seconds from API call to SQL update
+**SQL Writer Latency:**
+- Poll interval: ~5 seconds (idle wait)
+- Database write: ~100-500ms per document
+- **Total Write Component**: ~5-15 seconds from the moment the pipeline finishes to the data appearing in SQL.
+
+**System End-to-End Latency:**
+- Total latency is the sum of: **AI Pipeline Processing Time** + **SQL Writer Latency**.
+- The SQL Writer processes documents immediately after the AI pipeline commits them to Cosmos DB.
+- Because writes are asynchronous, the API response is returned to the user immediately after the pipeline finishes, while the SQL update occurs in the background seconds later.
 
 **Retry Latency:**
 - First retry: +2 minutes
